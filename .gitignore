@@ -1,0 +1,145 @@
+# Internal-only spec — kept out of the public repo
+spec.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+develop-eggs/
+.installed.cfg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtualenvs
+.venv/
+venv/
+env/
+ENV/
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+coverage.xml
+*.cover
+
+# Frontend
+spark/web/frontend/node_modules/
+spark/web/frontend/dist/
+spark/web/frontend/.vite/
+spark/web/frontend/coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# macOS metadata noise
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+._*
+Icon?
+.Spotlight-V100
+.Trashes
+.fseventsd
+.TemporaryItems
+.apdisk
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+
+# Logs / runtime artifacts
+*.log
+logs/
+.spark/
+
+# Local secrets and env
+.env
+.env.*
+!.env.example
+*.age
+secrets.age
+
+# Local databases / state files
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+
+# Forensic captures (encrypted-at-rest, but local-only)
+forensic/
+*.forensic
+
+# Build outputs
+*.pdf
+*.tar.gz
+*.zip
+
+# Local-only plans and scratch
+plans/
+scratch/
+TODO.local.md
+NOTES.local.md
+
+# AI tooling local state (preventative — none are present today, but
+# they tend to appear once they do; better to never accidentally
+# commit a personal context file)
+.claude/
+CLAUDE.md
+.cursor/
+.cursorrules
+.aider*
+.continue/
+.copilot/
+.windsurf/
+
+# TLS / signing material (shouldn't live in the repo; deploys mount
+# them from elsewhere)
+*.crt
+*.key
+*.pem
+*.csr
+*.p12
+*.pfx
+
+# Infrastructure-as-code state (in case Terraform / Pulumi / etc.
+# ever land in deploy/)
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+.pulumi/
+
+# Security / dependency-scan outputs
+bandit-report.*
+safety-report.*
+pip-audit.*
+sbom.*
+
+# Misc
+nohup.out
+*.bak
+*.orig
+*.rej

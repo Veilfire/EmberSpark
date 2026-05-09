@@ -1,0 +1,10 @@
+.git
+.github
+.ruff_cache
+__pycache__
+*.pyc
+.pytest_cache
+.venv
+venv
+.DS_Store
+spark/web/frontend/node_modules

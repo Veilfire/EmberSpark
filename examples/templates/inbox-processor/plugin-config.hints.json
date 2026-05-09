@@ -1,0 +1,28 @@
+{
+  "_comment": "Reference plugin configs. Not auto-applied. Configure via the Plugins page after install.",
+  "filesystem": {
+    "allow_paths": [
+      "~/Documents/spark-inbox",
+      "~/.spark/data/scratch/inbox",
+      "~/.spark/data/deliverables/inbox"
+    ],
+    "deny_paths": [],
+    "read_only": false,
+    "max_read_bytes": 2000000
+  },
+  "markdown_writer": {
+    "allow_paths": ["~/.spark/data/deliverables/inbox"],
+    "allow_append": true,
+    "allow_overwrite": false
+  },
+  "email_sender": {
+    "_note": "Optional. Remove from plugins.allow if you don't want the email summary.",
+    "smtp_host": "smtp.fastmail.com",
+    "smtp_port": 587,
+    "use_starttls": true,
+    "from_address": "spark-agent@example.com",
+    "allowed_to_domains": ["example.com"],
+    "allow_html": false,
+    "allow_attachments": false
+  }
+}

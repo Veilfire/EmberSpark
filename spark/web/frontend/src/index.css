@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    min-height: 100vh;
+    background-color: #0b0d10;
+    color: #e6edf3;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  /* Tabular numerals for data-heavy cells by default when class applied. */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+  /* Scrollbar styling (WebKit). */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1f242b;
+    border-radius: 5px;
+    border: 2px solid #0b0d10;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #2a3038;
+  }
+
+  /* Honor prefers-reduced-motion. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-spark-panel border border-spark-border rounded-lg;
+  }
+  .panel-interactive {
+    @apply panel hover:border-spark-accent/50 hover:shadow-md hover:-translate-y-0.5 transition-all duration-150;
+  }
+  .btn {
+    @apply px-3 py-1.5 rounded-md border border-spark-border bg-spark-panel hover:bg-spark-border text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-spark-accent/40 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply bg-gradient-to-b from-amber-400 to-amber-500 text-black border-amber-500 hover:from-amber-300 hover:to-amber-400 shadow-sm;
+  }
+  .btn-danger {
+    @apply border-spark-danger text-spark-danger hover:bg-spark-danger/10;
+  }
+  .btn-ghost {
+    @apply border-transparent bg-transparent hover:bg-spark-border/50 hover:border-spark-border;
+  }
+  .btn-icon {
+    @apply p-1.5 rounded-md border border-transparent hover:bg-spark-border/50 hover:border-spark-border text-spark-muted hover:text-spark-text transition-colors;
+  }
+  .kbd {
+    @apply font-mono text-xs bg-spark-border/70 px-1.5 py-0.5 rounded border border-spark-border/60;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border border-spark-border bg-spark-panel text-spark-muted;
+  }
+  .chip-good {
+    @apply border-spark-good/40 text-spark-good bg-spark-good/10;
+  }
+  .chip-warn {
+    @apply border-spark-accent/40 text-spark-accent bg-spark-accent/10;
+  }
+  .chip-danger {
+    @apply border-spark-danger/40 text-spark-danger bg-spark-danger/10;
+  }
+  .chip-info {
+    @apply border-blue-500/40 text-blue-400 bg-blue-500/10;
+  }
+  .input {
+    @apply bg-spark-bg border border-spark-border rounded-md px-2 py-1 text-sm text-spark-text focus:outline-none focus:border-spark-accent focus:ring-2 focus:ring-spark-accent/20 transition;
+  }
+  .label {
+    @apply text-xs uppercase tracking-wide text-spark-muted;
+  }
+  /* Subtle enter animation for panels + sections on mount. */
+  .animate-enter {
+    animation: enter 200ms ease-out;
+  }
+  @keyframes enter {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  /* Section dividers that use gradient fade. */
+  .divider-soft {
+    @apply h-px bg-gradient-to-r from-transparent via-spark-border to-transparent;
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "_comment": "Reference plugin configs. Not auto-applied.",
+  "rss_reader": {
+    "allow_hosts": [
+      "hnrss.org",
+      "feeds.arstechnica.com"
+    ],
+    "max_items": 50,
+    "include_content": true,
+    "max_content_chars": 5000
+  },
+  "http_tool": {
+    "rules": [
+      {
+        "host": "news.ycombinator.com",
+        "allowed_methods": ["GET"],
+        "extract_main_content": true
+      },
+      {
+        "host": "arstechnica.com",
+        "allowed_methods": ["GET"],
+        "extract_main_content": true
+      }
+    ],
+    "user_agent": "spark-daily-digest/1.0"
+  },
+  "markdown_writer": {
+    "allow_paths": ["~/.spark/data/deliverables/digests"],
+    "allow_overwrite": true,
+    "allow_append": false
+  },
+  "email_sender": {
+    "smtp_host": "smtp.fastmail.com",
+    "smtp_port": 587,
+    "use_starttls": true,
+    "from_address": "spark-agent@example.com",
+    "allowed_to_domains": ["example.com"],
+    "allow_html": false,
+    "allow_attachments": true,
+    "attachment_allow_paths": ["~/.spark/data/deliverables/digests"]
+  }
+}

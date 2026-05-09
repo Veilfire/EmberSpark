@@ -1,0 +1,184 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "spark-runtime"
+version = "0.1.0"
+description = "Spark — an open source, local-first, privacy-conscious LangGraph agent runtime for bounded autonomy."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Spark contributors" }]
+keywords = ["agent", "langgraph", "privacy", "sandbox", "bounded-autonomy"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+
+dependencies = [
+    "langgraph>=1.1,<2",
+    "langchain-core>=1.0",
+    "langchain>=1.0",
+    "pydantic>=2.12",
+    "pydantic-settings>=2.6",
+    "ruamel.yaml>=0.18",
+    "typer>=0.15",
+    "rich>=13",
+    "sqlmodel>=0.0.24",
+    "sqlalchemy>=2.0",
+    "aiosqlite>=0.20",
+    "alembic>=1.13",
+    "chromadb>=0.5",
+    "sentence-transformers>=3.0",
+    "rank-bm25>=0.2.2",
+    "apscheduler>=4.0.0a5",
+    "httpx>=0.27",
+    "structlog>=24.4",
+    "pyrage>=1.2",           # age_file vault (primary secrets backend, H1.3)
+    "detect-secrets>=1.5",
+    "presidio-analyzer>=2.2",
+    "presidio-anonymizer>=2.2",
+    "spacy>=3.7",
+    "aiofiles>=24.1",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "starlette>=0.40",
+    "python-multipart>=0.0.12",
+    "itsdangerous>=2.2",
+    "websockets>=13",
+    "sqlglot>=25.0",
+    "watchdog>=5.0",
+    # Phase G2 — new built-in plugins
+    "trafilatura>=1.12",     # http_tool readability extraction
+    "pypdf>=5.1",            # pdf_reader
+    "feedparser>=6.0",       # rss_reader
+    "jmespath>=1.0",         # json_query
+]
+
+[project.optional-dependencies]
+openai = ["langchain-openai>=0.2"]
+anthropic = ["langchain-anthropic>=0.2"]
+openrouter = ["langchain-openai>=0.2"]
+ollama = ["langchain-ollama>=0.2"]
+nsjail = ["python-nsjail>=0.3"]
+web = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "websockets>=13",
+    "itsdangerous>=2.2",
+    "bcrypt>=4.2",
+]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5",
+    "pytest-httpx>=0.30",
+    "respx>=0.21",
+    "hypothesis>=6.100",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "bandit>=1.7",
+    "pip-audit>=2.7",
+    "types-aiofiles",
+]
+
+[project.scripts]
+spark = "spark.cli.main:app"
+
+[project.entry-points."spark.plugins"]
+filesystem = "spark.plugins.builtins.filesystem:FilesystemPlugin"
+http_client = "spark.plugins.builtins.http_client:HttpClientPlugin"
+markdown_writer = "spark.plugins.builtins.markdown_writer:MarkdownWriterPlugin"
+shell = "spark.plugins.builtins.shell:ShellPlugin"
+sqlite = "spark.plugins.builtins.sqlite:SqlitePlugin"
+# Phase G2 Tier 1
+web_search = "spark.plugins.builtins.web_search:WebSearchPlugin"
+http_tool = "spark.plugins.builtins.http_tool:HttpToolPlugin"
+pdf_reader = "spark.plugins.builtins.pdf_reader:PdfReaderPlugin"
+datetime = "spark.plugins.builtins.datetime_tool:DatetimePlugin"
+csv_io = "spark.plugins.builtins.csv_io:CsvIoPlugin"
+# Phase G2 Tier 2
+email_sender = "spark.plugins.builtins.email_sender:EmailSenderPlugin"
+git = "spark.plugins.builtins.git:GitPlugin"
+json_query = "spark.plugins.builtins.json_query:JsonQueryPlugin"
+rss_reader = "spark.plugins.builtins.rss_reader:RssReaderPlugin"
+image_gen = "spark.plugins.builtins.image_gen:ImageGenPlugin"
+# Self-improvement: agent-proposed skills, gated by HITL review
+propose_skill = "spark.plugins.builtins.propose_skill:ProposeSkillPlugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["spark"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "TID", "PL", "RUF",
+    "S",   # bandit rules
+    "ASYNC",
+]
+ignore = [
+    "PLR0913",  # too many args (Pydantic models & configs)
+    "PLR2004",  # magic values
+    "S101",     # asserts OK in tests
+    "N818",     # exception names without "Error" suffix for domain exceptions
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "PLR"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+    "chromadb.*",
+    "sentence_transformers.*",
+    "presidio_analyzer.*",
+    "presidio_anonymizer.*",
+    "detect_secrets.*",
+    "apscheduler.*",
+    "keyring.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "integration: integration tests requiring external resources",
+    "sandbox: tests requiring a working OS sandbox backend",
+    "acceptance: end-to-end acceptance test",
+]
+
+[tool.coverage.run]
+source = ["spark"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101"]

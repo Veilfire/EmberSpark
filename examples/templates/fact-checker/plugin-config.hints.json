@@ -1,0 +1,25 @@
+{
+  "_comment": "Reference plugin configs. Not auto-applied.",
+  "web_search": {
+    "provider": "brave",
+    "api_key_secret": "web_search_key",
+    "max_results": 10,
+    "safe_search": "moderate"
+  },
+  "http_tool": {
+    "rules": [
+      {
+        "host": "example.com",
+        "allowed_methods": ["GET"],
+        "extract_main_content": true,
+        "note": "Replace with the hosts your search provider returns"
+      }
+    ],
+    "user_agent": "spark-fact-checker/1.0"
+  },
+  "markdown_writer": {
+    "allow_paths": ["~/.spark/data/deliverables/fact-checks"],
+    "allow_overwrite": true,
+    "allow_append": false
+  }
+}

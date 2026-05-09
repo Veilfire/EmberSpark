@@ -1,0 +1,27 @@
+{
+  "_comment": "Reference plugin configs. Not auto-applied. Copy into the Plugins page via the web UI.",
+  "web_search": {
+    "provider": "brave",
+    "api_key_secret": "web_search_key",
+    "max_results": 10,
+    "safe_search": "moderate",
+    "user_agent": "spark-research-assistant/1.0"
+  },
+  "http_tool": {
+    "rules": [
+      {
+        "host": "example.com",
+        "allowed_methods": ["GET"],
+        "extract_main_content": true,
+        "note": "Replace with the hosts your search provider returns"
+      }
+    ],
+    "default_max_response_bytes": 5000000,
+    "user_agent": "spark-research-assistant/1.0"
+  },
+  "markdown_writer": {
+    "allow_paths": ["~/.spark/data/deliverables/research"],
+    "allow_append": true,
+    "allow_overwrite": true
+  }
+}

@@ -1,0 +1,44 @@
+apiVersion: spark.veilfire.dev/v1alpha1
+kind: Agent
+metadata:
+  name: local-ollama-agent
+
+spec:
+  description: Fully local agent running against an Ollama server on localhost.
+
+  runtime:
+    provider:
+      type: ollama
+      model: llama3.1
+      base_url: http://localhost:11434
+      temperature: 0.2
+    max_iterations: 8
+    privacy_mode: strict
+    reflection: true
+
+  memory:
+    task_memory: true
+    session_memory:
+      enabled: true
+      max_entries: 100
+
+  plugins:
+    allow:
+      - filesystem
+      - markdown_writer
+
+  permissions:
+    filesystem:
+      allow_paths:
+        - ~/spark-local-workspace
+    sandbox:
+      enabled: true
+    grants:
+      - fs.read
+      - fs.write
+      - fs.list
+
+  logging:
+    level: info
+    raw_prompts: false
+    raw_model_outputs: false

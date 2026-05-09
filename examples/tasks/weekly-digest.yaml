@@ -1,0 +1,33 @@
+apiVersion: spark.veilfire.dev/v1alpha1
+kind: Task
+metadata:
+  name: weekly-research-digest
+
+spec:
+  agent: research-assistant
+  # Perpetual = fires on cron forever. Use mode: recurring with
+  # start_at + end_at for a finite window.
+  mode: perpetual
+
+  schedule:
+    type: cron
+    expression: "0 8 * * 1"
+    timezone: America/Vancouver
+    start_at: "2026-01-01T00:00:00+00:00"
+
+  objective: >
+    Gather new research notes from configured sources, summarize key findings,
+    extract action items, and write a markdown digest.
+
+  session:
+    name: weekly-research
+    continuity: bounded
+
+  output:
+    type: file
+    path: ~/Documents/spark-workspace/digests/weekly.md
+
+  budgets:
+    max_runtime_seconds: 900
+    max_model_calls: 30
+    max_tool_calls: 25

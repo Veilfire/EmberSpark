@@ -1,0 +1,74 @@
+# EmberSpark — LAN deployment via Docker Compose
+#
+# Quick start:
+#   docker compose up              # first boot — credentials print to console
+#   docker compose up -d           # subsequent runs in background
+#   docker compose logs -f spark   # view logs (including credentials on restart)
+#
+# The web UI is at http://<your-lan-ip>:7777
+# Only 192.168.0.0/16 source IPs are allowed (see deploy/docker/spark.yaml).
+#
+# Data persists in named volumes. `docker compose down` keeps them;
+# `docker compose down --volumes` destroys everything.
+
+services:
+  spark:
+    container_name: spark
+    build:
+      context: .
+      dockerfile: spark/daemon/docker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "7777:7777"
+    volumes:
+      # Pre-baked SparkRuntime config — LAN mode, 192.168.0.0/16 allowlist.
+      # Mounted at /etc/spark/ and passed via --config so the entrypoint's
+      # auto-generated default is skipped.
+      - ./deploy/docker/spark.yaml:/etc/spark/spark.yaml:ro
+      # State: web credentials, age vault, logs.
+      - spark-state:/data/spark
+      # Data: Chroma vector store, scratch space, deliverables, SQLite DB.
+      - spark-data:/data/spark-volume
+    command: ["serve", "--config", "/etc/spark/spark.yaml"]
+    # Bubblewrap sandbox configuration.
+    #
+    # Bwrap needs ONE of three privilege models:
+    #   1. setuid root binary (drops privs after setup)
+    #   2. file capabilities on the binary
+    #   3. zero capabilities + unprivileged user namespaces
+    #
+    # We use option 3, which is the most secure and works on every modern
+    # Linux kernel. It REQUIRES that the container's process has no
+    # capabilities at all — bwrap aborts with "Unexpected capabilities but
+    # not setuid, old file caps config?" if it sees capabilities in its
+    # own process state without a corresponding setuid bit on the binary.
+    #
+    # The previous ``cap_add: SYS_ADMIN`` did the opposite of what bwrap
+    # wanted: it pushed CAP_SYS_ADMIN into the ambient set, which all
+    # child processes (including bwrap) inherited as effective. Bwrap
+    # detected the mismatch and refused to start every tool call.
+    #
+    # ``cap_drop: ALL`` empties the container's cap-bounding set, the
+    # ambient set ends up empty, bwrap sees a clean unprivileged process,
+    # and uses kernel user namespaces directly. The host kernel must
+    # allow unprivileged userns (``kernel.unprivileged_userns_clone=1``
+    # on older kernels; always-on in 5.x+ — modern Linux is fine).
+    cap_drop:
+      - ALL
+    security_opt:
+      # Default seccomp profiles can block unshare() / clone() with the
+      # CLONE_NEWUSER flag that bwrap uses to enter its sandbox. Unconfined
+      # restores those syscalls. AppArmor unconfined is needed on
+      # distributions that ship a default profile blocking userns.
+      - "seccomp=unconfined"
+      - "apparmor=unconfined"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7777/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  spark-state:
+  spark-data:

@@ -1,0 +1,22 @@
+apiVersion: spark.veilfire.dev/v1alpha1
+kind: Task
+metadata:
+  name: code-reviewer
+
+spec:
+  agent: code-reviewer
+  mode: one_shot
+
+  objective: >
+    Review the local repository at ~/projects/my-repo. Start with
+    `git status` + `git log -n 10` to understand the recent history,
+    then `git diff main` to see the current branch's changes. For each
+    changed file, read the current contents via the filesystem plugin,
+    and write a markdown review to {deliverables}/reviews/<branch>.md
+    with sections: Summary, Strengths, Issues (tagged critical/major/
+    nit), and Suggested Changes. Be concrete — reference line numbers.
+
+  budgets:
+    max_runtime_seconds: 1800
+    max_model_calls: 50
+    max_tool_calls: 40

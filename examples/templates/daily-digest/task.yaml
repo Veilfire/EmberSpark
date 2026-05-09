@@ -1,0 +1,34 @@
+apiVersion: spark.veilfire.dev/v1alpha1
+kind: Task
+metadata:
+  name: daily-digest
+
+spec:
+  agent: daily-digest
+  # Perpetual = fires on cron forever. Use mode: recurring instead if
+  # you want a finite start_at / end_at window.
+  mode: perpetual
+
+  schedule:
+    type: cron
+    expression: "0 7 * * *"
+    timezone: America/Vancouver
+    # Past timestamp so the next cron tick fires immediately on install.
+    start_at: "2026-01-01T00:00:00+00:00"
+
+  objective: >
+    Fetch these feeds via rss_reader and produce a one-page digest:
+      - https://hnrss.org/frontpage?points=100
+      - https://feeds.arstechnica.com/arstechnica/index
+    Summarize the 10 most interesting items with a one-sentence rationale.
+    Write the digest to {deliverables}/digests/daily-YYYY-MM-DD.md and
+    email it to the operator's inbox via email_sender.
+
+  session:
+    name: daily-digest
+    continuity: bounded
+
+  budgets:
+    max_runtime_seconds: 900
+    max_model_calls: 30
+    max_tool_calls: 25

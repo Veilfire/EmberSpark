@@ -1,0 +1,29 @@
+apiVersion: spark.veilfire.dev/v1alpha1
+kind: Task
+metadata:
+  name: fact-checker
+
+spec:
+  agent: fact-checker
+  mode: one_shot
+
+  objective: >
+    Fact-check the following claim and produce an evidence-backed report:
+
+      "Replace this string with the claim you want checked."
+
+    Run at least 3 distinct web_search queries covering the claim and
+    common counter-arguments. For the top 5 results across all queries,
+    fetch the article via http_tool with extract_main_content=true.
+    Write a structured markdown report to
+    {deliverables}/fact-checks/<slug>.md with these sections:
+      - Claim (verbatim)
+      - Verdict (Supported / Mixed / Refuted / Insufficient evidence)
+      - Confidence (Low / Medium / High) with a one-line rationale
+      - Evidence — per-source bullet with quote + url
+      - Caveats — what's still uncertain
+
+  budgets:
+    max_runtime_seconds: 1200
+    max_model_calls: 40
+    max_tool_calls: 30

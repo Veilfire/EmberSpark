@@ -1,0 +1,74 @@
+apiVersion: spark.veilfire.dev/v1alpha1
+kind: Agent
+metadata:
+  name: research-assistant
+
+spec:
+  description: Local-first agent for research and structured writing tasks.
+
+  runtime:
+    provider:
+      type: anthropic
+      model: claude-opus-4-6
+      api_key_ref: anthropic_key
+      temperature: 0.2
+    max_iterations: 12
+    max_model_calls: 30
+    max_tool_calls: 25
+    max_runtime_seconds: 900
+    privacy_mode: strict
+    reflection: true
+
+  memory:
+    task_memory: true
+    session_memory:
+      enabled: true
+      max_entries: 200
+    long_term_memory:
+      enabled: true
+      namespace: research-assistant
+      backend: chroma
+      collection: research_assistant_memory
+      persist_path: ~/.spark/chroma
+      embedder:
+        provider: sentence_transformers
+        model: BAAI/bge-small-en-v1.5
+      retrieval:
+        top_k: 6
+        min_score: 0.72
+      retention:
+        default_class: review
+
+  plugins:
+    allow:
+      - http_client
+      - filesystem
+      - markdown_writer
+
+  permissions:
+    filesystem:
+      allow_paths:
+        - ~/Documents/spark-workspace
+      deny_paths:
+        - ~/.ssh
+        - ~/.config
+    network:
+      allow_hosts:
+        - api.github.com
+    sandbox:
+      enabled: true
+      backend: auto
+      cpu_seconds: 30
+      memory_mb: 512
+    grants:
+      - fs.read
+      - fs.write
+      - fs.list
+      - net.http
+      - secrets.read
+
+  logging:
+    level: info
+    raw_prompts: false
+    raw_model_outputs: false
+    local_path: ~/.spark/logs

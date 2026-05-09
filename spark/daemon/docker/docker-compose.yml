@@ -1,0 +1,40 @@
+services:
+  spark:
+    image: spark-runtime:latest
+    container_name: ${SPARK_CONTAINER_NAME:-spark}
+    build:
+      context: ../../..
+      dockerfile: spark/daemon/docker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${SPARK_PORT:-7777}:7777"
+    volumes:
+      # State volume — logs, web credentials, and (unless data_volume
+      # moves it) the SQLite DB. Bind-mounted from the host so the
+      # operator can point at a real path. Defaults to ~/.spark on the host.
+      - "${SPARK_HOST_STATE_DIR:-${HOME}/.spark}:/data/spark"
+      # Data volume — Chroma (runtime-private), scratch (plugin-writable),
+      # deliverables (user downloads). Bind-mounted from the host so
+      # Chroma survives `docker compose down` and the operator can grab
+      # deliverable files directly from disk if they need to.
+      - "${SPARK_HOST_DATA_DIR:-${HOME}/.spark/data}:/data/spark-volume"
+    environment:
+      - SPARK_WEB_ALLOW_ORIGIN=${SPARK_WEB_ALLOW_ORIGIN:-}
+    # User namespace tuning — needed for the bubblewrap sandbox inside the
+    # container on default Docker configurations.
+    security_opt:
+      - "apparmor:unconfined"
+      - "seccomp:unconfined"
+    # bubblewrap needs user-ns creation; some distros require this cap:
+    cap_add:
+      - SYS_ADMIN
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:7777/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "${SPARK_CPUS:-2.0}"
+          memory: "${SPARK_MEMORY:-2g}"

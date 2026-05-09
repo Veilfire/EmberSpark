@@ -1,0 +1,35 @@
+apiVersion: spark.veilfire.dev/v1alpha1
+kind: Task
+metadata:
+  name: research-assistant
+
+spec:
+  agent: research-assistant
+  # Perpetual = fires on cron forever. Use mode: recurring instead if
+  # you want a finite start_at / end_at window.
+  mode: perpetual
+
+  schedule:
+    type: cron
+    expression: "0 8 * * 1"
+    timezone: America/Vancouver
+    # Past timestamp so the next cron tick fires immediately on install.
+    start_at: "2026-01-01T00:00:00+00:00"
+
+  objective: >
+    Produce a weekly research digest covering recent developments in:
+    "agent runtimes", "LLM safety research", "local-first AI tooling".
+    For each topic, run a web_search, fetch the top 3 results via
+    http_tool with extract_main_content=true, and write a consolidated
+    markdown file under the deliverables directory at
+    research/YYYY-MM-DD.md. The digest should have one H2 section per
+    topic with 3 bullet summaries + source links.
+
+  session:
+    name: research-assistant
+    continuity: bounded
+
+  budgets:
+    max_runtime_seconds: 1200
+    max_model_calls: 40
+    max_tool_calls: 30

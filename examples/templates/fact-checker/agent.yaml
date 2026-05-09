@@ -1,0 +1,58 @@
+apiVersion: spark.veilfire.dev/v1alpha1
+kind: Agent
+metadata:
+  name: fact-checker
+
+spec:
+  description: >
+    Given a claim, searches for sources, fetches them, and produces an
+    evidence-backed verdict in markdown.
+
+  runtime:
+    provider:
+      type: anthropic
+      model: claude-opus-4-6
+      api_key_ref: anthropic_key
+      temperature: 0.1
+    max_iterations: 15
+    max_model_calls: 40
+    max_tool_calls: 30
+    max_runtime_seconds: 1200
+    privacy_mode: strict
+    reflection: true
+
+  memory:
+    task_memory: true
+    session_memory:
+      enabled: true
+      max_entries: 100
+
+  plugins:
+    allow:
+      - web_search
+      - http_tool
+      - markdown_writer
+
+  permissions:
+    filesystem:
+      allow_paths: []
+      deny_paths:
+        - ~/.ssh
+        - ~/.config
+    network:
+      allow_hosts: []
+    sandbox:
+      enabled: true
+      backend: auto
+      cpu_seconds: 60
+      memory_mb: 1024
+    grants:
+      - fs.write
+      - net.http
+      - secrets.read
+
+  logging:
+    level: info
+    raw_prompts: false
+    raw_model_outputs: false
+    local_path: ~/.spark/logs

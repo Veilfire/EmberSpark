@@ -1,0 +1,25 @@
+{
+  "_comment": "Reference plugin configs. Not auto-applied.",
+  "git": {
+    "allow_repos": ["~/projects/my-repo"],
+    "allow_write": false,
+    "max_log_entries": 200,
+    "max_diff_bytes": 2000000,
+    "timeout_seconds": 30
+  },
+  "filesystem": {
+    "allow_paths": ["~/projects/my-repo"],
+    "deny_paths": [
+      "~/projects/my-repo/.git",
+      "~/projects/my-repo/node_modules",
+      "~/projects/my-repo/.venv"
+    ],
+    "read_only": true,
+    "max_read_bytes": 1000000
+  },
+  "markdown_writer": {
+    "allow_paths": ["~/.spark/data/deliverables/reviews"],
+    "allow_overwrite": true,
+    "allow_append": true
+  }
+}

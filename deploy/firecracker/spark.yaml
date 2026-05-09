@@ -1,0 +1,37 @@
+# SparkRuntime config for Firecracker microVM deployment.
+#
+# Binds to 0.0.0.0:7777 with a 192.168.0.0/16 allowlist (no TLS).
+# The 192.168.241.0/30 CIDR is the TAP point-to-point subnet between
+# the host and guest — required so port-forwarded traffic from the
+# host isn't rejected by the CIDR middleware.
+#
+# Credentials rotate every startup and are printed to the journal.
+# View with: journalctl -u spark -n 30
+#
+# The data volume root is /mnt/spark-data — the ext4 data image
+# attached as /dev/vdb and auto-mounted by the systemd unit baked
+# into the rootfs by build-rootfs.sh.
+
+apiVersion: spark.veilfire.dev/v1alpha1
+kind: SparkRuntime
+metadata:
+  name: firecracker-lan
+spec:
+  web:
+    enabled: true
+    bind:
+      mode: lan
+      host: 0.0.0.0
+      port: 7777
+      allowed_cidrs:
+        - 192.168.0.0/16
+        - 192.168.241.0/30
+    credentials:
+      rotate_on_startup: true
+  data_volume:
+    enabled: true
+    root: /mnt/spark-data
+    chroma_subdir: chroma
+    scratch_subdir: scratch
+    deliverables_subdir: deliverables
+    sqlite_on_volume: true

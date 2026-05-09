@@ -1,0 +1,26 @@
+apiVersion: spark.veilfire.dev/v1alpha1
+kind: Task
+metadata:
+  name: inbox-processor
+
+spec:
+  agent: inbox-processor
+  mode: event
+
+  on:
+    type: file_changed
+    path: ~/Documents/spark-inbox
+    recursive: false
+    debounce_seconds: 10
+
+  objective: >
+    For each new file in the inbox directory, read a preview, classify it
+    as one of: invoice, receipt, contract, note, or other. Move the file
+    into {scratch}/inbox/<category>/<original-name>. Append a one-line
+    entry to {deliverables}/inbox/summary.md recording the classification
+    and timestamp.
+
+  budgets:
+    max_runtime_seconds: 300
+    max_model_calls: 15
+    max_tool_calls: 20
