@@ -181,6 +181,27 @@ def _apply_additive_migrations(sync_conn: Any) -> None:
     except Exception:  # pragma: no cover
         pass
 
+    # Additive migration for sessions — auto-generated chat title.
+    # Existing chats stay NULL and the UI falls back to session_id;
+    # the next turn on each existing session populates the column.
+    session_columns = [
+        ("title", "TEXT"),
+    ]
+    try:
+        existing = {
+            row[1]
+            for row in sync_conn.execute(
+                text("PRAGMA table_info('sessions')")
+            ).fetchall()
+        }
+        for col_name, col_sql in session_columns:
+            if col_name not in existing:
+                sync_conn.execute(
+                    text(f"ALTER TABLE sessions ADD COLUMN {col_name} {col_sql}")
+                )
+    except Exception:  # pragma: no cover
+        pass
+
     # Additive migration for triggers — webhook auth modes + lockout.
     trigger_columns = [
         ("auth_mode", "TEXT NOT NULL DEFAULT 'bearer'"),

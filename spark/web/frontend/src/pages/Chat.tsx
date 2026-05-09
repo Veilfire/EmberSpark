@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "../lib/api";
+import { api, sseConnect } from "../lib/api";
 import { AgentSummary } from "../lib/types";
 import { MarkdownView } from "../components/MarkdownView";
 import { RelativeTime } from "../components/RelativeTime";
@@ -37,6 +37,8 @@ interface ChatMessage {
 type SessionSummary = {
   session_id: string;
   name: string;
+  // Auto-generated 5-word summary, null until the first turn lands.
+  title: string | null;
   agent_name: string;
   created_at: string;
   updated_at: string;
@@ -94,6 +96,24 @@ export default function Chat() {
     queryFn: () => api.get("/api/chat/sessions"),
     refetchInterval: 10_000,
   });
+
+  // Live updates from the SSE bus. The runtime publishes
+  // ``chat.session_updated`` when a session's title or other metadata
+  // changes (most commonly: first-turn title generation finished).
+  // Without this, the sidebar wouldn't reflect the new title until
+  // the next 10-s refetchInterval tick. Survives WS reconnects and
+  // works across multiple tabs.
+  useEffect(() => {
+    const disconnect = sseConnect("/api/stream/events", {
+      onMessage: (raw) => {
+        if (typeof raw !== "object" || raw === null) return;
+        const env = raw as { kind?: string };
+        if (env.kind !== "chat.session_updated") return;
+        qc.invalidateQueries({ queryKey: ["chat-sessions"] });
+      },
+    });
+    return disconnect;
+  }, [qc]);
 
   const [agentName, setAgentName] = useState<string>("");
   const [sessionId, setSessionId] = useState<string>("");
@@ -206,6 +226,9 @@ export default function Chat() {
           // `send()` already set streaming=true optimistically.
         } else if (data.kind === "done") {
           setStreaming(false);
+          // Refresh the sessions list so a freshly-generated title (or
+          // updated_at bump) lands in the sidebar without a manual reload.
+          qc.invalidateQueries({ queryKey: ["chat-sessions"] });
         } else if (data.kind === "tool") {
           setMessages((m) => [
             ...m,
@@ -411,14 +434,21 @@ export default function Chat() {
                   className="w-full text-left px-3 py-2 transition"
                   onClick={() => resumeSession(s)}
                 >
-                  <div className="font-mono text-xs truncate">
-                    {s.session_id}
+                  {/* Primary line: auto-generated title (after first turn) */}
+                  {/* with a graceful fall-back to the session_id while the */}
+                  {/* title is still null. */}
+                  <div className="text-sm truncate text-spark-text">
+                    {s.title ?? (
+                      <span className="font-mono text-xs">{s.session_id}</span>
+                    )}
                   </div>
-                  <div className="flex items-center justify-between mt-0.5">
-                    <span className="text-xs text-spark-muted truncate">
-                      {s.agent_name}
-                    </span>
-                    <span className="text-[10px] text-spark-muted shrink-0 ml-2">
+                  {/* Secondary line: agent name + canonical chat id + relative time. */}
+                  <div className="flex items-center gap-2 mt-0.5 text-[10px] text-spark-muted">
+                    <span className="truncate">{s.agent_name}</span>
+                    {s.title && (
+                      <span className="font-mono truncate">{s.session_id}</span>
+                    )}
+                    <span className="shrink-0 ml-auto">
                       <RelativeTime ts={s.updated_at} />
                     </span>
                   </div>
@@ -445,7 +475,21 @@ export default function Chat() {
             <div className="border-b border-spark-border px-4 py-2 flex items-center justify-between text-sm shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <MessageSquare className="w-4 h-4 text-spark-accent shrink-0" />
-                <span className="font-mono text-xs truncate">{sessionId}</span>
+                {/* Title takes the primary slot; chat-id slides to its */}
+                {/* right as a secondary identifier. Until the first turn */}
+                {/* generates a title, the chat-id stays primary. */}
+                {activeSession?.title ? (
+                  <>
+                    <span className="font-medium text-sm truncate">
+                      {activeSession.title}
+                    </span>
+                    <span className="font-mono text-xs text-spark-muted truncate shrink-0">
+                      {sessionId}
+                    </span>
+                  </>
+                ) : (
+                  <span className="font-mono text-xs truncate">{sessionId}</span>
+                )}
                 <span className="chip text-[10px] shrink-0">{agentName}</span>
                 {activeSession && (
                   <span className="text-xs text-spark-muted shrink-0">

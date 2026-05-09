@@ -110,6 +110,14 @@ class SessionRow(SQLModel, table=True):
     session_id: str = Field(primary_key=True, max_length=64)
     name: str = Field(index=True, max_length=128)
     agent_name: str = Field(index=True, max_length=128)
+    # Auto-generated 5-word summary of the conversation, populated by
+    # the runtime after the first user-assistant exchange (see
+    # ``_generate_session_title`` in ``spark.web.api.chat``). NULL until
+    # then; the UI falls back to ``session_id`` so a chat that never
+    # exchanges a turn still has a stable label. Never overwritten once
+    # set — long conversations that drift off the original topic keep
+    # their first-turn title for stable navigation.
+    title: str | None = Field(default=None, max_length=160)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
