@@ -118,14 +118,12 @@ export function Shell({ children }: { children: ReactNode }) {
         {/* Branding */}
         <div className="flex items-center justify-between p-4 shrink-0 md:border-b md:border-spark-border">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="w-6 h-6 rounded bg-gradient-to-br from-amber-400 to-amber-500 shrink-0 shadow-sm flex items-center justify-center">
-              <Zap
-                className="w-4 h-4 text-amber-950"
-                strokeWidth={2.75}
-                fill="currentColor"
-                aria-hidden="true"
-              />
-            </div>
+            <img
+              src="/spark-icon.png"
+              alt=""
+              className="w-6 h-6 shrink-0 rounded"
+              aria-hidden="true"
+            />
             {!collapsed && (
               <h1 className="font-bold text-lg tracking-tight">Spark</h1>
             )}

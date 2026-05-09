@@ -347,6 +347,15 @@ def build_app(config: SparkRuntime) -> FastAPI:
 
         @app.get("/{full_path:path}")
         async def spa_fallback(full_path: str) -> FileResponse:
+            # Root-level static files (favicon.ico, spark-icon.png,
+            # apple-touch-icon.png, robots.txt, ...) live alongside
+            # index.html and need to be served as themselves, not the
+            # SPA shell. Anything that isn't a real file falls through
+            # to index.html so client-side routes still resolve.
+            if full_path and "/" not in full_path and "\\" not in full_path:
+                candidate = STATIC_DIR / full_path
+                if candidate.is_file():
+                    return FileResponse(candidate)
             index = STATIC_DIR / "index.html"
             if not index.exists():
                 return JSONResponse({"detail": "frontend not built"}, status_code=503)

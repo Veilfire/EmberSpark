@@ -1,5 +1,4 @@
 import { FormEvent, useState } from "react";
-import { Zap } from "lucide-react";
 import { api } from "../lib/api";
 
 export default function Login() {
@@ -26,14 +25,12 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center">
       <form onSubmit={onSubmit} className="panel p-6 w-96 space-y-4">
         <div className="flex items-center gap-2 mb-2">
-          <div className="w-5 h-5 rounded bg-gradient-to-br from-amber-400 to-amber-500 flex items-center justify-center shadow-sm">
-            <Zap
-              className="w-3.5 h-3.5 text-amber-950"
-              strokeWidth={2.75}
-              fill="currentColor"
-              aria-hidden="true"
-            />
-          </div>
+          <img
+            src="/spark-icon.png"
+            alt=""
+            className="w-6 h-6 rounded"
+            aria-hidden="true"
+          />
           <h1 className="font-bold text-xl">Spark</h1>
         </div>
         <p className="text-sm text-spark-muted">
