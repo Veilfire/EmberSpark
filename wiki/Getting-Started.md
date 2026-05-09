@@ -4,9 +4,79 @@ This page gets you from zero to a running EmberSpark web UI with one configured 
 
 Before you start, make sure you're on **Linux or macOS**. Windows is not supported because EmberSpark's mandatory OS sandbox requires Bubblewrap (Linux) or Seatbelt (macOS).
 
+You have two paths:
+
+- **[Docker (recommended)](#docker-quick-start)** — one `docker compose up` and you're done. The image bakes in Bubblewrap, the spaCy NER model, the embedding model, and every Python dependency. No venv, no system packages, no Python version dance.
+- **[Native install](#native-install)** — clone the repo, install into a venv, run from your shell. Use this if you want to hack on EmberSpark itself or you're already running on a Linux box you control.
+
 ---
 
-## 1. Install system dependencies
+## Docker quick-start
+
+The shortest path from zero to a working web UI. Tested with Docker Engine + Compose v2 on Linux, Docker Desktop on macOS, and `podman` + `podman-compose` on either.
+
+### 1. Clone
+
+```bash
+git clone https://github.com/Veilfire/EmberSpark.git
+cd EmberSpark
+```
+
+### 2. Bring it up
+
+```bash
+docker compose up
+```
+
+(or `podman-compose up` on Podman.)
+
+First run builds the image — ~5–10 min: Bubblewrap, Python wheels, the frontend bundle, and the HuggingFace embedding-model preload. Subsequent runs reuse the cache and start in seconds.
+
+When the runtime is up you'll see:
+
+```
+============================================================
+  Spark web UI — credentials (DISPLAYED ONCE; save them now)
+============================================================
+  URL:      http://0.0.0.0:7777
+  Username: …
+  Password: …
+============================================================
+```
+
+**Save those credentials.** They rotate on `--rotate-credentials`, but you only see *this* pair once. Open the URL, sign in.
+
+### 3. Detach
+
+After copying the credentials, `Ctrl+C` and bring the stack back up in the background:
+
+```bash
+docker compose up -d
+docker compose logs -f spark    # tail logs / see credentials again on a restart
+```
+
+### What you got
+
+- **Web UI on the LAN** — `0.0.0.0:7777` with a `192.168.0.0/16` source-IP allowlist baked into [`deploy/docker/spark.yaml`](https://github.com/Veilfire/EmberSpark/blob/main/deploy/docker/spark.yaml). Public exposure requires editing that file.
+- **Two named volumes for state** — `spark-state` (web credentials, age vault, logs) and `spark-data` (SQLite, Chroma vectors, deliverables). `docker compose down` keeps both; `docker compose down --volumes` wipes them.
+- **Sandbox preconfigured** — `cap_drop: ALL` + `seccomp=unconfined` + `apparmor=unconfined` so Bubblewrap's unprivileged-userns mode works without further tuning. See [Concepts: Sandbox](Concepts-Sandbox) for why this combination is the right one.
+- **Per-host healthcheck** — `GET /api/health` every 30 s; `docker ps` flips to `(healthy)` once startup completes.
+
+### 4. Configure your provider
+
+Sign into the UI, then:
+
+1. **Provider** sidebar → pick OpenAI / Anthropic / OpenRouter / Ollama / Bedrock, paste an API key. The key is sealed into the age-encrypted vault on the `spark-state` volume.
+2. **Persona** → tweak the default system prompt if you want.
+3. **Plugins** → most plugins ship with safe working defaults; `web_search` defaults to `ddg_html` (no API key needed). For an end-to-end fact-checker walkthrough, jump to [First Task](First-Task).
+
+That's the Docker path. The rest of this page is the **native install** alternative — skip it unless you specifically want a venv-based setup.
+
+---
+
+## Native install
+
+### 1. Install system dependencies
 
 ### Linux
 

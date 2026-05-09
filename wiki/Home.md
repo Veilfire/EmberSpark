@@ -8,9 +8,19 @@ This wiki is the user-facing documentation. If you came here looking to run Embe
 
 ## New to EmberSpark?
 
-Start here:
+Fastest path:
 
-1. **[Getting Started](Getting-Started)** — install EmberSpark and run your first task in under 10 minutes.
+```bash
+git clone https://github.com/Veilfire/EmberSpark.git
+cd EmberSpark
+docker compose up
+```
+
+Open the printed URL, save the credentials it prints once, and you're in the web UI. The compose file pre-bakes Bubblewrap, the embedding model, and the privacy NER model — no venv, no system packages.
+
+Then read these in order:
+
+1. **[Getting Started](Getting-Started)** — Docker quick-start (above) and the native venv alternative.
 2. **[Installation](Installation)** — full install reference including system dependencies and optional extras.
 3. **[First Task](First-Task)** — a guided walkthrough of writing your first agent YAML and running it.
 4. **[Web UI Guide](Web-UI-Guide)** — tour the web interface, the command palette, and the eight-section Security Center.

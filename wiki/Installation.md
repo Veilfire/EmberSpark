@@ -2,6 +2,40 @@
 
 The complete install reference. If you only want to run EmberSpark, [Getting Started](Getting-Started) is shorter. Come here when you need to know *why* a step exists or want to tune the install.
 
+EmberSpark ships in two install shapes:
+
+- **Docker / Podman** — the published [`docker-compose.yaml`](https://github.com/Veilfire/EmberSpark/blob/main/docker-compose.yaml) builds a self-contained image with Bubblewrap, the embedding model, the privacy NER model, and every Python wheel pre-installed. **Recommended for production and most evaluation work** — see [Docker install](#docker-install) below.
+- **Native venv** — clone the repo, install into a Python 3.12+ virtualenv. Use this when you want to hack on EmberSpark itself or you're deploying onto a host you've already configured for it.
+
+---
+
+## Docker install
+
+```bash
+git clone https://github.com/Veilfire/EmberSpark.git
+cd EmberSpark
+docker compose up               # foreground; first run builds, save the printed credentials
+docker compose up -d            # subsequent runs detached
+docker compose logs -f spark    # tail logs
+docker compose down             # stop, KEEP volumes
+docker compose down --volumes   # stop + WIPE all state (vault, DB, deliverables)
+```
+
+Persistent state lives in two named volumes:
+
+| Volume | Mounts at | What's there |
+|---|---|---|
+| `spark-state` | `/data/spark` | web credentials (`web-credentials.json`, `web-token`), age-encrypted secrets vault (`secrets.age`), JSONL logs (`logs/spark.jsonl`), agent + task YAMLs |
+| `spark-data` | `/data/spark-volume` | SQLite DB (`spark.db`), Chroma vectors, scratch dir, deliverables dir |
+
+The image runs as the non-root `spark` user (uid 1000). The container's bind mode + source-IP allowlist come from a pre-baked [`deploy/docker/spark.yaml`](https://github.com/Veilfire/EmberSpark/blob/main/deploy/docker/spark.yaml) — LAN bind on `0.0.0.0:7777` with a `192.168.0.0/16` allowlist. Edit that file and recreate the container if you need a different bind / allowlist combination.
+
+Sandbox plumbing: `cap_drop: ALL` + `security_opt: [seccomp=unconfined, apparmor=unconfined]`. Bubblewrap inside the container uses unprivileged user namespaces; the inner sandbox auto-detects nested-userns mode (`/run/.containerenv`) and bind-mounts `/proc` + `/dev` instead of mounting fresh ones — see [Concepts: Sandbox](Concepts-Sandbox).
+
+If your host kernel has `kernel.unprivileged_userns_clone=0`, flip it to `1` (`sudo sysctl kernel.unprivileged_userns_clone=1`); modern 5.x+ kernels default to enabled.
+
+Need to switch to Podman: `podman-compose up` works as a drop-in. The compose file is podman-compatible.
+
 ---
 
 ## Prerequisites
@@ -20,9 +54,10 @@ Optional:
 | Optional | Purpose |
 |---|---|
 | nsjail | Stricter Linux sandbox backend (opt-in per agent) |
-| Docker | Only if you want to run EmberSpark as a container |
 | Firecracker binary + KVM | Only if you want microVM deployment |
 | Ollama | Local LLM provider; runs on `localhost:11434` |
+
+(Docker / Podman aren't listed — see [Docker install](#docker-install) above; if you're using the container image you don't need any of the per-OS packages below.)
 
 ---
 
