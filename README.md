@@ -50,7 +50,46 @@ You get a capable agent runtime that you can explain to yourself, defend to a re
 
 Every side effect passes through two enforcement layers: the Python `ToolExecutor` seam (allowlists, schemas, budgets, redaction) and the OS sandbox (namespaces, rlimits, scoped bind mounts). A compromised plugin cannot reach beyond its declared permissions even if the Python layer is bypassed.
 
-## Install
+## Quickstart — Docker (recommended)
+
+The shortest path. The image bakes Bubblewrap, the spaCy NER model, the embedding model, and every Python wheel.
+
+```bash
+git clone https://github.com/Veilfire/EmberSpark.git
+cd EmberSpark
+docker compose up               # foreground; first run builds (~5–10 min)
+```
+
+(or `podman-compose up`.)
+
+When it's running, watch for the credentials banner:
+
+```
+============================================================
+  Spark web UI — credentials (DISPLAYED ONCE; save them now)
+============================================================
+  URL:      http://0.0.0.0:7777
+  Username: …
+  Password: …
+============================================================
+```
+
+**Save those credentials**, open the URL, sign in. Detach with `Ctrl+C` then:
+
+```bash
+docker compose up -d            # background
+docker compose logs -f spark    # tail logs / re-show credentials on a restart
+docker compose down             # stop, KEEP volumes
+docker compose down --volumes   # stop + WIPE all state
+```
+
+Persistent state lives in two named volumes — `spark-state` (web credentials, age vault, logs) and `spark-data` (SQLite, Chroma, deliverables). The compose file binds the UI on `0.0.0.0:7777` with a `192.168.0.0/16` source-IP allowlist; edit [`deploy/docker/spark.yaml`](deploy/docker/spark.yaml) for a different bind / allowlist combination.
+
+Sandbox is preconfigured: `cap_drop: ALL` + `seccomp=unconfined` + `apparmor=unconfined` so Bubblewrap's unprivileged-userns mode works on every modern Linux kernel.
+
+## Quickstart — Native venv
+
+For when you want to hack on EmberSpark itself.
 
 ```bash
 # Core + providers you want
@@ -63,30 +102,14 @@ sudo apt install bubblewrap
 
 # Presidio spaCy model (first time only)
 python -m spacy download en_core_web_lg
-```
 
-## Quickstart
-
-```bash
 spark config init                            # writes ~/.spark/spark.yaml (web disabled)
 $EDITOR ~/.spark/spark.yaml                  # set spec.web.enabled: true
 spark doctor check                           # verify sandbox + deps
-spark serve                                  # start the web UI
+spark serve                                  # start the web UI — credentials print to stderr
 ```
 
-`spark serve` prints generated credentials **once** to stderr on startup:
-
-```
-============================================================
-  Spark web UI — credentials (DISPLAYED ONCE; save them now)
-============================================================
-  URL:      http://127.0.0.1:7777
-  Username: sparrow1234
-  Password: tree-song77@Moon
-============================================================
-```
-
-Save those, open the URL, sign in. The UI walks you through the rest.
+Save the printed credentials, open the URL, sign in. The UI walks you through the rest.
 
 ### CLI-only flow
 
