@@ -17,6 +17,7 @@ import PluginConfigPage from "./pages/PluginConfig";
 import Persona from "./pages/Persona";
 import Stats from "./pages/Stats";
 import Guardrails from "./pages/Guardrails";
+import Filtering from "./pages/Filtering";
 import Replay from "./pages/Replay";
 import Downloads from "./pages/Downloads";
 import Settings from "./pages/Settings";
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="/persona" element={<Persona />} />
           <Route path="/stats" element={<Stats />} />
           <Route path="/guardrails" element={<Guardrails />} />
+          <Route path="/filtering" element={<Filtering />} />
           <Route path="/downloads" element={<Downloads />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/templates" element={<Templates />} />

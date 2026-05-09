@@ -160,6 +160,10 @@ Personas must be deleted-while-inactive — the repository refuses to delete the
 
 ## Privacy modes and redaction
 
+Two cooperating layers:
+
+### Legacy redaction pipeline
+
 Three modes:
 
 - **strict** (default) — full redactor chain (regex + entropy + Presidio), strict sensitivity gates (`high`/`restricted` blocked from model exposure), raw prompt/output logs off.
@@ -174,6 +178,20 @@ The redaction pipeline:
 4. **Structural filtering** — field drops, size caps, summary substitution
 
 Every log leaf is walked by the structlog scrub processor before being serialized, and `redaction_applied` is added to the event dict whenever the walker changes anything.
+
+### Data Classification Guardrails (DCG)
+
+A surgical overlay on top of the legacy pipeline. 15 named classes (`pii.*`, `financial.*`, `credentials.*`, `cli.*`, `prompt.*`) cross-cut by 5 scopes (`user_input`, `tool_output`, `model_output`, `memory_write`, `shell_args`). Each `(class, scope)` resolves to one of five enforcement levels (`allow` / `warn` / `redact` / `shadow_block` / `block`) via `grant → agent → global → built-in default`.
+
+The **operator surface** is the dedicated **SECURE → Filtering** page:
+
+- per-category level + scopes
+- per-category **mask style** (`[REDACTED:class]` / `****-1234` / `J. D.` / `[#hash]` / strip / first-4 / plain)
+- per-category **min confidence** floor + tri-state **consensus** toggle
+- per-detector enable/disable for each `rule_id` (e.g. `aws-access-key`, `presidio:PERSON`, `cli.sudo`, `high-entropy`)
+- a **dry-run sandbox** that runs `apply_guardrails` against arbitrary text + scope + agent without persisting
+
+Implementation: [`spark/privacy/guardrails.py`](../spark/privacy/guardrails.py) (resolver + enforcement), [`spark/privacy/classifiers.py`](../spark/privacy/classifiers.py) (detectors), [`spark/privacy/mask.py`](../spark/privacy/mask.py) (renderer), [`spark/privacy/detector_catalog.py`](../spark/privacy/detector_catalog.py) (UI catalog), [`spark/web/api/filtering.py`](../spark/web/api/filtering.py) (REST). Mutations audit at `elevated` under `kind=security.filtering.*`; the dry-run records one `info`-severity row with hit-class summary only — never the raw input.
 
 ---
 

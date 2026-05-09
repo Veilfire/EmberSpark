@@ -114,6 +114,17 @@ The token header grants **admin** role; cookie auth grants **admin** role on log
 | `DELETE` | `/api/security/data-grants/{id}` | admin | Revoke grant |
 | `GET` | `/api/security/data-detections?hours=24` | viewer | Rollup of guardrail events by class |
 
+## Filtering (data-class operator surface)
+
+| Method | Path | Role | Purpose |
+|---|---|---|---|
+| `GET` | `/api/filtering/policy` | viewer | One-shot snapshot — families, categories with built-in defaults + global override + detector catalog, agent override map, mask-style options each rendered through every category's preview sample |
+| `PUT` | `/api/filtering/policy/category/{data_class}` | admin | Edit one category's level / scopes / mask_style / min_confidence / require_consensus globally. Audited at `elevated` under `kind=security.filtering.category.update`. |
+| `PUT` | `/api/filtering/policy/agent/{agent_name}/{data_class}` | admin | Same, scoped to one agent. Same audit kind, target `agent:{name}:{class}`. |
+| `DELETE` | `/api/filtering/policy/agent/{agent_name}/{data_class}` | admin | Revert agent override; falls back to global / built-in default. Audited at `elevated` under `security.filtering.category.revert`. |
+| `PUT` | `/api/filtering/policy/category/{data_class}/detector/{rule_id}` | admin | Toggle a single detector inside a category. Body `{enabled: bool, threshold?: float}`. Drops every hit whose `rule_id` matches before level computation. Audited at `elevated` under `security.filtering.detector.update`. |
+| `POST` | `/api/filtering/dry-run` | viewer | Run `apply_guardrails(text, agent_name, scope)` against arbitrary text without persisting. Returns `{blocked, input, output, hits, levels_applied, policy_snapshot}`. Audited at `info` under `security.filtering.dry_run` — only `(input_chars, hit_classes, rule_ids)` are kept; the raw input never enters audit. |
+
 ## Cost
 
 | Method | Path | Role | Purpose |

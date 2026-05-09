@@ -35,6 +35,8 @@ Skills
 Stats
 Security Center
 Guardrails
+Filtering
+Forensic
 Audit Log
 Ops
 Settings
@@ -213,7 +215,7 @@ The directory is operator-configured in `SparkRuntime`'s `data_volume` block. If
 
 Three sections:
 
-- **Notification categories** — every notification kind (download ready, pending skill review, approval required, DLQ, expiring IP grant, raw-logging-on, cost alerts, incidents, plugin hash drift, memory pruned) has its own toggle. Turning a category off means no row is written and no bell/toast fires for that kind — the underlying event still happens, you just don't get nagged.
+- **Notification categories** — every notification kind (download ready, pending skill review, approval required, DLQ, expiring IP grant, raw-logging-on, cost alerts, incidents, plugin hash drift, memory pruned, data-class blocked, data-class grant expiring) has its own toggle. Turning a category off means no row is written and no bell/toast fires for that kind — the underlying event still happens, you just don't get nagged.
 - **Security — session timeout** — admin-only control over how long a signed-in session stays valid. Toggle the timeout on/off; when on, dial it with days / hours / minutes inputs (1 minute minimum, 30 days maximum). When off, the inputs grey out and sessions don't expire. Saves take effect immediately for new and existing sessions — no restart required. Every change is audited at `elevated` severity.
 - **Delivery** — toast-on-create + sound-on-elevated toggles.
 
@@ -240,13 +242,34 @@ One agent (EmberSpark is single-agent). Refreshes on page load.
 
 ### Security Center
 
-The 8-tab policy editor. See the dedicated [Security Center Guide](Security-Center-Guide).
+The multi-tab policy editor (Global Posture / Network / Filesystem / Sandbox / Plugins / Privacy / Data Classes / Secrets / Trusted Docs). The **Data Classes** tab now redirects to the [Filtering page](Filtering-Page); per-agent overrides and unlimited grants live here for now. See the dedicated [Security Center Guide](Security-Center-Guide).
 
 ### Guardrails
 
 Last 24h aggregation of critical / elevated / info audit events, broken out by category (permission denied, sandbox denied, budget exceeded, plugin hash changed, internal grants, raw logging, skill rejected/approved). Clickable into the audit log with pre-filtered queries.
 
 Use this as your daily smoke test — if anything unexpected is in the critical count, investigate.
+
+### Filtering
+
+The operator surface for the data-class guardrail engine. One page consolidates **per-category** level / scope / mask-style / min-confidence / consensus settings, **per-detector** enable/disable in an Advanced drawer, and a **dry-run sandbox** for paste-and-test against the resolved policy.
+
+Five family sections (PII / Financial / Credentials / CLI / Prompt safety) hold one card per data class. Each card carries:
+
+- **Level** — `allow` / `warn` / `redact` / `shadow_block` / `block`. `shadow_block` is a calibration tool — audits AS IF blocked but passes through.
+- **Mask style** — how a redacted match is rendered: `[REDACTED:class]`, `****-1234`, `J. D.`, `[#a1b2c3d4]`, etc. Live preview rendered server-side per category.
+- **Scopes** — chips for `user_input` / `tool_output` / `model_output` / `memory_write` / `shell_args`.
+- **Min confidence** — slider; hits below the floor are dropped before level computation.
+- **Consensus** — tri-state: inherit, require ≥2 detectors, single OK.
+- **Advanced** — drawer with one toggle per detector (`rule_id` like `aws-access-key`, `presidio:PERSON`, `cli.sudo`, ...). Disabling here drops every hit whose `rule_id` matches.
+
+Header has a **Dry-run** button that opens a sandbox: pick a scope + agent, paste sample text, see the redacted output, hit table, and resolved policy snapshot — no DB writes, just an info-severity audit row recording that the sandbox was used.
+
+Every save writes one `security.filtering.*` audit row at `elevated`. Per-agent overrides and unlimited grants stay on **Security Center** for now. See the dedicated [Filtering page](Filtering-Page) and [Data Classification Guardrails](Data-Classification-Guardrails) docs.
+
+### Forensic
+
+Encrypted per-run capture of every prompt / model output / tool call / memory event, gated behind an opt-in toggle on the run + a per-run age identity stored in the secrets vault. Deleting the identity cryptographically shreds the data. See the [Forensic Review Guide](Forensic-Review-Guide).
 
 ### Audit Log
 
@@ -346,5 +369,7 @@ All timestamps are normalized to UTC at the storage boundary and rendered in the
 
 - [docs/web-ui.md](https://github.com/Veilfire/EmberSpark/blob/main/docs/web-ui.md) — source-level reference
 - [Security Center Guide](Security-Center-Guide) — the policy editor
+- [Filtering page](Filtering-Page) — data-class category cards + per-detector toggles + dry-run sandbox
+- [Data Classification Guardrails](Data-Classification-Guardrails) — the engine the Filtering page edits
 - [Command Palette](Command-Palette) — keyboard shortcuts deep dive
 - [API Reference](API-Reference) — every HTTP endpoint

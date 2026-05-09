@@ -24,7 +24,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from spark.config.enums import DataClass, DataClassLevel, DataScope
+from spark.config.enums import DataClass, DataClassLevel, DataScope, MaskStyle
 from spark.errors.codes import ErrorCode, SparkError
 from spark.persistence.db import session_scope
 from spark.persistence.learning_models import (
@@ -36,6 +36,7 @@ from spark.persistence.learning_repos import (
     DataPolicyRepository,
 )
 from spark.privacy.classifiers import DetectorHit, run_classifiers
+from spark.privacy.mask import default_for as _default_mask_for, render_mask
 from spark.utils.time import utcnow
 
 
@@ -161,10 +162,26 @@ BUILTIN_DEFAULTS: dict[DataClass, ClassDefault] = {
 
 @dataclass(frozen=True)
 class ResolvedPolicy:
+    """Effective policy for one ``(data_class, scope)`` pair.
+
+    ``mask_style`` / ``min_confidence`` / ``require_consensus`` /
+    ``detector_overrides`` are populated by the Filtering page and
+    consumed inside ``apply_guardrails``. They use the same
+    grant → agent → global → default precedence as ``level`` / ``scopes``.
+
+    ``detector_overrides`` is a freeform mapping from detector
+    ``rule_id`` to a small dict (``{enabled?: bool, threshold?: float}``).
+    Unknown rule_ids are skipped silently.
+    """
+
     level: DataClassLevel
     scopes: frozenset[DataScope]
     source: str  # "grant" | "agent" | "global" | "default"
     grant_id: int | None = None
+    mask_style: MaskStyle = MaskStyle.PLACEHOLDER_CLASS
+    min_confidence: float = 0.5
+    require_consensus: bool = False
+    detector_overrides: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 def _parse_scopes(raw: str) -> frozenset[DataScope]:
@@ -182,6 +199,36 @@ def _parse_scopes(raw: str) -> frozenset[DataScope]:
 
 def _join_scopes(scopes: frozenset[DataScope]) -> str:
     return ",".join(sorted(s.value for s in scopes))
+
+
+def _parse_mask_style(raw: str | None) -> MaskStyle | None:
+    if not raw:
+        return None
+    try:
+        return MaskStyle(raw)
+    except ValueError:
+        return None
+
+
+def _parse_detector_overrides(raw: str | None) -> dict[str, dict[str, object]]:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    out: dict[str, dict[str, object]] = {}
+    for key, value in parsed.items():
+        if not isinstance(key, str):
+            continue
+        if isinstance(value, dict):
+            out[key] = {str(k): v for k, v in value.items()}
+        elif isinstance(value, bool):
+            # Shorthand ``{rule_id: false}`` means ``{enabled: false}``.
+            out[key] = {"enabled": value}
+    return out
 
 
 def resolve_policy(
@@ -225,6 +272,61 @@ def resolve_policy(
             grants_by_class[cls] = g
 
     for cls, default in BUILTIN_DEFAULTS.items():
+        # The knobs that fall back independently of level/source: a
+        # global row can set the mask style while an agent row narrows
+        # the scopes, and the agent row's missing mask_style should not
+        # erase the global one.
+        global_row = globals_by_class.get(cls)
+        agent_row = agent_by_class.get(cls)
+
+        global_mask = _parse_mask_style(global_row.mask_style) if global_row else None
+        agent_mask = _parse_mask_style(agent_row.mask_style) if agent_row else None
+        mask_style = (
+            agent_mask
+            if agent_mask is not None
+            else global_mask
+            if global_mask is not None
+            else _default_mask_for(cls)
+        )
+
+        global_min = (
+            global_row.min_confidence
+            if global_row is not None and global_row.min_confidence is not None
+            else None
+        )
+        agent_min = (
+            agent_row.min_confidence
+            if agent_row is not None and agent_row.min_confidence is not None
+            else None
+        )
+        min_confidence = (
+            agent_min
+            if agent_min is not None
+            else global_min
+            if global_min is not None
+            else default.min_confidence
+        )
+
+        if agent_row is not None and agent_row.require_consensus is not None:
+            require_consensus = bool(agent_row.require_consensus)
+        elif global_row is not None and global_row.require_consensus is not None:
+            require_consensus = bool(global_row.require_consensus)
+        else:
+            require_consensus = default.require_consensus
+
+        # Detector overrides are merged: global is the base, agent
+        # values overlay it. A rule_id present in both takes the agent
+        # value wholesale (no per-key merge — too easy to surprise).
+        detector_overrides: dict[str, dict[str, object]] = {}
+        if global_row is not None:
+            detector_overrides.update(
+                _parse_detector_overrides(global_row.detector_overrides_json)
+            )
+        if agent_row is not None:
+            detector_overrides.update(
+                _parse_detector_overrides(agent_row.detector_overrides_json)
+            )
+
         # 1. Grant
         grant = grants_by_class.get(cls)
         if grant is not None:
@@ -237,47 +339,71 @@ def resolve_policy(
                 scopes=_parse_scopes(grant.scopes),
                 source="grant",
                 grant_id=grant.id,
+                mask_style=mask_style,
+                min_confidence=min_confidence,
+                require_consensus=require_consensus,
+                detector_overrides=detector_overrides,
             )
             continue
 
         # 2. Agent override
-        row = agent_by_class.get(cls)
-        if row is not None:
-            scopes = _parse_scopes(row.scopes)
+        if agent_row is not None:
+            scopes = _parse_scopes(agent_row.scopes)
             if scope in scopes:
                 try:
-                    level = DataClassLevel(row.level)
+                    level = DataClassLevel(agent_row.level)
                 except ValueError:
                     level = default.level
                 out[cls] = ResolvedPolicy(
-                    level=level, scopes=scopes, source="agent"
+                    level=level,
+                    scopes=scopes,
+                    source="agent",
+                    mask_style=mask_style,
+                    min_confidence=min_confidence,
+                    require_consensus=require_consensus,
+                    detector_overrides=detector_overrides,
                 )
                 continue
 
         # 3. Global override
-        row = globals_by_class.get(cls)
-        if row is not None:
-            scopes = _parse_scopes(row.scopes)
+        if global_row is not None:
+            scopes = _parse_scopes(global_row.scopes)
             if scope in scopes:
                 try:
-                    level = DataClassLevel(row.level)
+                    level = DataClassLevel(global_row.level)
                 except ValueError:
                     level = default.level
                 out[cls] = ResolvedPolicy(
-                    level=level, scopes=scopes, source="global"
+                    level=level,
+                    scopes=scopes,
+                    source="global",
+                    mask_style=mask_style,
+                    min_confidence=min_confidence,
+                    require_consensus=require_consensus,
+                    detector_overrides=detector_overrides,
                 )
                 continue
 
         # 4. Built-in default — applies only if scope is covered.
         if scope in default.scopes:
             out[cls] = ResolvedPolicy(
-                level=default.level, scopes=default.scopes, source="default"
+                level=default.level,
+                scopes=default.scopes,
+                source="default",
+                mask_style=mask_style,
+                min_confidence=min_confidence,
+                require_consensus=require_consensus,
+                detector_overrides=detector_overrides,
             )
         else:
             out[cls] = ResolvedPolicy(
                 level=DataClassLevel.ALLOW,
                 scopes=default.scopes,
                 source="default",
+                mask_style=mask_style,
+                min_confidence=min_confidence,
+                require_consensus=require_consensus,
+                detector_overrides=detector_overrides,
             )
 
     return out
@@ -373,13 +499,53 @@ def _level_worse(a: DataClassLevel, b: DataClassLevel) -> DataClassLevel:
     return a if _LEVEL_ORDER[a] >= _LEVEL_ORDER[b] else b
 
 
-def _apply_redactions(text: str, hits: list[DetectorHit]) -> str:
+def _apply_redactions(
+    text: str,
+    hits: list[DetectorHit],
+    *,
+    mask_styles: dict[DataClass, MaskStyle] | None = None,
+) -> str:
+    """Replace each hit's span with its mask-style rendering.
+
+    ``mask_styles`` lets the caller hand down the per-class style chosen
+    by the resolver. When absent, falls back to the per-class default
+    style — which itself reduces to the legacy ``[REDACTED:<class>]``
+    placeholder for almost every category, so call sites that haven't
+    been updated still produce the same output.
+    """
     # Sort by start desc so span replacements don't shift earlier indices.
     ordered = sorted(hits, key=lambda h: h.start, reverse=True)
     out = text
     for h in ordered:
-        out = out[: h.start] + (h.redaction or f"[REDACTED:{h.data_class.value}]") + out[h.end:]
+        style = (
+            mask_styles.get(h.data_class)
+            if mask_styles is not None
+            else _default_mask_for(h.data_class)
+        )
+        if style is None:
+            style = _default_mask_for(h.data_class)
+        original = text[h.start : h.end]
+        replacement = render_mask(original, style=style, data_class=h.data_class)
+        out = out[: h.start] + replacement + out[h.end :]
     return out
+
+
+def _detector_enabled(rule_id: str, overrides: dict[str, dict[str, object]]) -> bool:
+    """Return False if an override explicitly disables this detector.
+
+    ``rule_id`` may be a fused id like ``aws-access-key+presidio:CREDIT_CARD``;
+    each component is checked. Any component flagged ``enabled=False``
+    drops the whole hit. Unknown rule_ids are silently allowed.
+    """
+    if not overrides:
+        return True
+    for component in rule_id.split("+"):
+        cfg = overrides.get(component)
+        if not cfg:
+            continue
+        if cfg.get("enabled") is False:
+            return False
+    return True
 
 
 def _spans_overlap(a: DetectorHit, b: DetectorHit) -> bool:
@@ -491,21 +657,22 @@ async def apply_guardrails(
     if not hits:
         return GuardrailOutcome(text=text, hits=(), levels_applied=(), policy_sources=())
 
-    # Apply per-class confidence + consensus gates.
+    # Apply per-class confidence + consensus gates from the resolved
+    # policy (operator-tunable on the Filtering page) and drop hits
+    # whose detector is explicitly disabled in the per-detector
+    # overrides.
     accepted: list[DetectorHit] = []
     for hit in hits:
-        default = BUILTIN_DEFAULTS.get(hit.data_class)
-        min_conf = default.min_confidence if default is not None else 0.0
+        pol = resolved.get(hit.data_class)
+        min_conf = pol.min_confidence if pol is not None else 0.5
+        require_consensus = pol.require_consensus if pol is not None else False
+        overrides = pol.detector_overrides if pol is not None else {}
+
         if hit.confidence < min_conf:
             continue
-        if (
-            default is not None
-            and default.require_consensus
-            and hit.tier != "consensus"
-        ):
-            # The operator can relax this by clearing require_consensus
-            # via a policy override, but today that's not exposed yet —
-            # consensus-required classes skip single-detector hits.
+        if require_consensus and hit.tier != "consensus":
+            continue
+        if not _detector_enabled(hit.rule_id, overrides):
             continue
         accepted.append(hit)
 
@@ -582,7 +749,14 @@ async def apply_guardrails(
     redact_hits = [
         h for h in accepted if per_class.get(h.data_class) is DataClassLevel.REDACT
     ]
-    redacted_text = _apply_redactions(text, redact_hits) if redact_hits else text
+    mask_styles = {
+        cls: pol.mask_style for cls, pol in resolved.items() if pol is not None
+    }
+    redacted_text = (
+        _apply_redactions(text, redact_hits, mask_styles=mask_styles)
+        if redact_hits
+        else text
+    )
 
     levels_applied = tuple(sorted(per_class.items(), key=lambda kv: kv[0].value))
     policy_sources = tuple(

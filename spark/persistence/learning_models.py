@@ -250,6 +250,13 @@ class DataClassPolicyRow(SQLModel, table=True):
     One row per override point. A ``global`` row applies to every agent
     unless a matching ``agent`` row exists. Deleting a row falls back to
     the built-in default from the taxonomy module.
+
+    The ``mask_style`` / ``min_confidence`` / ``require_consensus`` /
+    ``detector_overrides_json`` columns are populated by the Filtering
+    page and consumed inside ``resolve_policy``. ``detector_overrides_json``
+    is a free-form ``{detector_id: {enabled?: bool, threshold?: float}}``
+    map; the redaction layer reads it lazily so unknown detector ids are
+    silently skipped instead of raising.
     """
 
     __tablename__ = "data_class_policies"
@@ -261,6 +268,33 @@ class DataClassPolicyRow(SQLModel, table=True):
     level: str = Field(max_length=16)  # allow | warn | redact | block
     scopes: str = Field(max_length=256)  # comma-sep DataScope values
     reason: str = ""
+    mask_style: str | None = Field(default=None, max_length=32)  # MaskStyle.value
+    min_confidence: float | None = None  # gate detector hits below this
+    # Tri-state: None = inherit, True = require consensus, False = don't.
+    # Stored as nullable INTEGER on SQLite.
+    require_consensus: bool | None = None
+    detector_overrides_json: str | None = None
+    updated_at: datetime = Field(default_factory=_utcnow)
+    updated_by: str | None = Field(default=None, max_length=128)
+
+
+class FilteringPresetRow(SQLModel, table=True):
+    """Named bundle of category settings — Strict / Balanced / Permissive / Custom.
+
+    A preset is a JSON snapshot of every (data_class -> {level, scopes,
+    mask_style, min_confidence, require_consensus, detector_overrides})
+    pair. Applying a preset replaces matching ``DataClassPolicyRow``
+    rows. Operators can fork a built-in preset by saving over it with a
+    new name.
+    """
+
+    __tablename__ = "filtering_presets"
+
+    name: str = Field(primary_key=True, max_length=64)
+    description: str = ""
+    builtin: bool = False  # True for the three shipped presets
+    payload_json: str = "{}"
+    created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
     updated_by: str | None = Field(default=None, max_length=128)
 

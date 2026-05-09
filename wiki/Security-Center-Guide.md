@@ -1,6 +1,6 @@
 # Security Center Guide
 
-The Security Center is the nine-tab policy editor at `/security` in the web UI. This page walks each tab and the operator workflows for each.
+The Security Center is the multi-tab policy editor at `/security` in the web UI. This page walks each tab and the operator workflows for each. Note: configuration of data-class levels, scopes, mask styles, and per-detector toggles moved to the dedicated [Filtering page](Filtering-Page); the **Data Classes** tab here renders a redirect notice and will be removed in the next release.
 
 All mutations in the Security Center write `audit_log` entries. Critical mutations (freeze, internal-IP grants, raw logging, trusted-doc edits) use `critical` severity and show up in the Incident Banner.
 
@@ -167,16 +167,21 @@ When enabled, raw prompt + output content lands in the JSONL log bypassing all r
 
 ---
 
-## Tab 7 — Data Classes
+## Tab 7 — Data Classes (moved → SECURE → Filtering)
 
-Per-class content-aware policy. Four sub-panels:
+The flat per-class table lived here historically. Configuration of data-class **levels**, **scopes**, **mask styles**, **min confidence**, **consensus toggle**, and **per-detector enable/disable** moved to the dedicated **SECURE → Filtering** page, which also adds a paste-and-test dry-run sandbox.
 
-- **Global policy** — every built-in class (PII, financial, credentials, dangerous CLI, prompt injection) with its current level (`allow` / `warn` / `redact` / `block`) and scopes.
-- **Per-agent overrides** — pick an agent, set a class-level override or revert to inherit the global value.
+What remains on Security Center for now:
+
+- **Per-agent overrides** — pick an agent, set a class-level override or revert to inherit the global value. (Will move to Filtering's right rail in a follow-up.)
 - **Unlimited grants** — explicit carve-outs. The pattern for "this agent handles credit cards as part of its job, allow `financial.card`." Requires typed-name confirmation, TTL (default 7 days, permanent requires extra danger confirm), audited critical.
-- **Recent detections** — 24h rollup of guardrail events by class, auto-refreshing.
 
-Full reference: [Data Classification Guardrails](Data-Classification-Guardrails).
+This tab itself now renders a one-paragraph notice that points at `/filtering`. It will be removed in the next release.
+
+Full reference:
+
+- [Filtering page](Filtering-Page) — the operator surface.
+- [Data Classification Guardrails](Data-Classification-Guardrails) — the engine.
 
 ---
 

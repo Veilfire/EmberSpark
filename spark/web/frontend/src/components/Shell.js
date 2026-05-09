@@ -1,7 +1,7 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { Activity, AlertTriangle, Blocks, Bot, Brain, Calendar, ChartBar, ChevronsLeft, ChevronsRight, Coins, Download, Eye, FileClock, KeyRound, LayoutDashboard, LogOut, MessageSquare, Package, Search, Settings as SettingsIcon, Shield, Sparkles, User2, Wrench, Zap, } from "lucide-react";
+import { Activity, AlertTriangle, Blocks, Bot, Brain, Calendar, ChartBar, ChevronsLeft, ChevronsRight, Coins, Download, Eye, FileClock, Filter, KeyRound, LayoutDashboard, LogOut, MessageSquare, Package, Search, Settings as SettingsIcon, Shield, Sparkles, User2, Wrench, Zap, } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useAuth } from "../hooks/useAuth";
 import { NotificationBell } from "./NotificationBell";
@@ -33,6 +33,7 @@ const NAV_GROUPS = [
             { to: "/security", label: "Security", Icon: Shield },
             { to: "/secrets", label: "Secrets", Icon: KeyRound },
             { to: "/guardrails", label: "Guardrails", Icon: AlertTriangle },
+            { to: "/filtering", label: "Filtering", Icon: Filter },
             { to: "/forensic", label: "Forensic", Icon: Eye },
             { to: "/audit", label: "Audit", Icon: FileClock },
         ],

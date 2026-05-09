@@ -39,6 +39,7 @@ from spark.web.api import (
     chat,
     cost,
     deliverables as deliverables_routes,
+    filtering as filtering_routes,
     forensic as forensic_routes,
     providers as provider_routes,
     guardrails as guardrails_routes,
@@ -317,6 +318,7 @@ def build_app(config: SparkRuntime) -> FastAPI:
     app.include_router(scheduler.router, prefix="/api/scheduler", tags=["scheduler"])
     app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
     app.include_router(security.router, prefix="/api/security", tags=["security"])
+    app.include_router(filtering_routes.router, prefix="/api/filtering", tags=["filtering"])
     app.include_router(cost.router, prefix="/api/cost", tags=["cost"])
     app.include_router(memory.router, prefix="/api/memory", tags=["memory"])
     app.include_router(skills_routes.router, prefix="/api/skills", tags=["skills"])

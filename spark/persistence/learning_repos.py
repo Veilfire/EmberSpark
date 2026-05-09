@@ -36,6 +36,13 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
+# Sentinel used by upsert kwargs that distinguish "leave the column
+# alone" from "set the column to NULL". ``None`` is a valid stored
+# value (e.g. clear a mask_style override), so we need a separate
+# marker for "argument not provided".
+_UNSET: Any = object()
+
+
 class PlaybookRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -464,6 +471,10 @@ class DataPolicyRepository:
         scopes: str,
         reason: str,
         actor: str,
+        mask_style: str | None = _UNSET,  # type: ignore[assignment]
+        min_confidence: float | None = _UNSET,  # type: ignore[assignment]
+        require_consensus: bool | None = _UNSET,  # type: ignore[assignment]
+        detector_overrides_json: str | None = _UNSET,  # type: ignore[assignment]
     ) -> DataClassPolicyRow:
         row = await self.get_global(data_class)
         if row is None:
@@ -474,6 +485,12 @@ class DataPolicyRepository:
                 level=level,
                 scopes=scopes,
                 reason=reason,
+                mask_style=None if mask_style is _UNSET else mask_style,
+                min_confidence=None if min_confidence is _UNSET else min_confidence,
+                require_consensus=None if require_consensus is _UNSET else require_consensus,
+                detector_overrides_json=(
+                    None if detector_overrides_json is _UNSET else detector_overrides_json
+                ),
                 updated_at=datetime.now(tz=UTC),
                 updated_by=actor,
             )
@@ -482,6 +499,14 @@ class DataPolicyRepository:
             row.level = level
             row.scopes = scopes
             row.reason = reason
+            if mask_style is not _UNSET:
+                row.mask_style = mask_style
+            if min_confidence is not _UNSET:
+                row.min_confidence = min_confidence
+            if require_consensus is not _UNSET:
+                row.require_consensus = require_consensus
+            if detector_overrides_json is not _UNSET:
+                row.detector_overrides_json = detector_overrides_json
             row.updated_at = datetime.now(tz=UTC)
             row.updated_by = actor
         return row
@@ -495,6 +520,10 @@ class DataPolicyRepository:
         scopes: str,
         reason: str,
         actor: str,
+        mask_style: str | None = _UNSET,  # type: ignore[assignment]
+        min_confidence: float | None = _UNSET,  # type: ignore[assignment]
+        require_consensus: bool | None = _UNSET,  # type: ignore[assignment]
+        detector_overrides_json: str | None = _UNSET,  # type: ignore[assignment]
     ) -> DataClassPolicyRow:
         row = await self.get_agent(agent_name, data_class)
         if row is None:
@@ -505,6 +534,12 @@ class DataPolicyRepository:
                 level=level,
                 scopes=scopes,
                 reason=reason,
+                mask_style=None if mask_style is _UNSET else mask_style,
+                min_confidence=None if min_confidence is _UNSET else min_confidence,
+                require_consensus=None if require_consensus is _UNSET else require_consensus,
+                detector_overrides_json=(
+                    None if detector_overrides_json is _UNSET else detector_overrides_json
+                ),
                 updated_at=datetime.now(tz=UTC),
                 updated_by=actor,
             )
@@ -513,6 +548,14 @@ class DataPolicyRepository:
             row.level = level
             row.scopes = scopes
             row.reason = reason
+            if mask_style is not _UNSET:
+                row.mask_style = mask_style
+            if min_confidence is not _UNSET:
+                row.min_confidence = min_confidence
+            if require_consensus is not _UNSET:
+                row.require_consensus = require_consensus
+            if detector_overrides_json is not _UNSET:
+                row.detector_overrides_json = detector_overrides_json
             row.updated_at = datetime.now(tz=UTC)
             row.updated_by = actor
         return row

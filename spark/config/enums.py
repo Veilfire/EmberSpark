@@ -122,3 +122,24 @@ class DataClassLevel(str, Enum):
     REDACT = "redact"              # replace hits with [REDACTED:<class>]
     SHADOW_BLOCK = "shadow_block"  # audit elevated as if blocked, pass through
     BLOCK = "block"                # raise SparkError; operation aborts
+
+
+class MaskStyle(str, Enum):
+    """How a redacted hit is rendered when ``DataClassLevel.REDACT`` fires.
+
+    Operators pick a style per category on the Filtering page so the
+    output format matches the reviewer's intent — full mask for
+    secrets, last-4 reveal for cards (still useful for support), name
+    initials for human-readable PII, deterministic hash when log
+    correlation matters more than human readability, hard strip for
+    prompt-injection where leaving any trace risks re-exposing the
+    payload.
+    """
+
+    PLACEHOLDER_CLASS = "placeholder_class"   # [REDACTED:credentials.api]
+    PLACEHOLDER_PLAIN = "placeholder_plain"   # [REDACTED]
+    LAST_4 = "last_4"                          # ****-****-****-1234
+    FIRST_4 = "first_4"                        # 4111-****-****-****
+    INITIAL = "initial"                        # "Jane Doe" -> "J. D."
+    HASH_SHORT = "hash_short"                  # [#abc123de]
+    STRIP = "strip"                            # remove the match entirely

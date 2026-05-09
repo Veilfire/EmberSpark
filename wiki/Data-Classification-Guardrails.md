@@ -1,8 +1,8 @@
 # Data Classification Guardrails
 
-**Data Classification Guardrails (DCG)** is EmberSpark's content-aware policy layer. It detects sensitive or dangerous content as it crosses any of the agent's boundaries — tool outputs, chat messages, model responses, memory writes, shell arguments — and applies a per-class **level** (`allow` / `warn` / `redact` / `block`) you pick.
+**Data Classification Guardrails (DCG)** is EmberSpark's content-aware policy layer. It detects sensitive or dangerous content as it crosses any of the agent's boundaries — tool outputs, chat messages, model responses, memory writes, shell arguments — and applies a per-class **level** (`allow` / `warn` / `redact` / `shadow_block` / `block`) you pick.
 
-The system lives in **Security Center → Data Classes**.
+The operator surface lives at **SECURE → Filtering** (see the dedicated [Filtering page](Filtering-Page) guide). Per-agent overrides and time-bound grants stay on **Security Center**.
 
 ---
 
@@ -52,13 +52,38 @@ Operators can extend the CLI catalog in [`spark/privacy/cli_patterns.py`](https:
 ## Levels
 
 ```
-allow   — detect, count, move on. Useful when you want metrics without enforcement.
-warn    — detect, audit at info severity, pass through.
-redact  — replace each hit inline with `[REDACTED:<class>]`.
-block   — raise SparkError(DATA_CLASS_BLOCKED); the operation aborts; audited critical.
+allow         — detect, count, move on. Useful when you want metrics without enforcement.
+warn          — detect, audit at info severity, pass through.
+redact        — replace each hit inline through the configured mask style.
+shadow_block  — audit AS IF blocked, but pass through. Calibration tool — flip a class
+                here, watch the audit rollup, promote to `block` when FP rate is acceptable.
+block         — raise SparkError(DATA_CLASS_BLOCKED); the operation aborts; audited critical.
 ```
 
 The level is applied to whichever **scope** the content is currently crossing. A class can have different levels in different scopes — e.g. `financial.card` might be `redact` on tool output but `block` on user input.
+
+### Mask styles for `redact`
+
+When a category is at `redact`, the operator picks **how** the matched span is rendered. See the [Filtering page](Filtering-Page#mask-styles) for the full table; the short version:
+
+| Style | Card example | Why |
+|---|---|---|
+| `placeholder_class` | `[REDACTED:financial.card]` | Default for credentials/CLI/vault — preserves shape for downstream forensics. |
+| `placeholder_plain` | `[REDACTED]` | Strip class info from the agent. |
+| `last_4` | `****-****-****-1234` | Cards/IBAN — support workflows still need to identify the entry. **Default for `financial.card` and `financial.bank`.** |
+| `first_4` | `4111-****-****-****` | BIN inspection. |
+| `initial` | `J. D.` (for names) | **Default for `pii.name`** — keeps prose readable. |
+| `hash_short` | `[#a1b2c3d4]` | Deterministic 8-char hash; lets logs correlate without exposure. |
+| `strip` | `` (empty string) | **Default for `prompt.injection`** — leaving a trace risks re-injecting. |
+
+The renderer is pure and lives in [`spark/privacy/mask.py`](https://github.com/Veilfire/EmberSpark/blob/main/spark/privacy/mask.py).
+
+### Per-class min_confidence + consensus
+
+Every category also carries a `min_confidence` floor and a `require_consensus` flag, both editable from the Filtering page card:
+
+- `min_confidence` — hits below the floor are dropped before level computation. Lets you raise Presidio-heavy categories (e.g. `pii.basic`) past their default 0.55 if you're seeing false positives.
+- `require_consensus` — when true, only fused tier-1+tier-2 hits fire (e.g. an LUHN-validated PAN that Presidio also recognizes as `CREDIT_CARD`). Lets you keep noisy classes like `pii.name` on `redact` without flooding the audit log with single-detector false positives.
 
 ## Scopes
 
@@ -83,7 +108,19 @@ For any `(agent, class, scope)` at runtime, DCG resolves the effective level in 
 3. **Global policy** — a `DataClassPolicyRow(scope_kind="global")` that covers the scope.
 4. **Built-in default** — from the table above.
 
-The resolver is a pure function; resolutions are cached in-process and invalidated on every policy/grant mutation.
+`mask_style`, `min_confidence`, `require_consensus`, and per-detector overrides follow the same precedence per field **independently**. So an agent override that sets `level=block` keeps the global `mask_style` until the same agent row also sets one. `require_consensus` is tri-state — `null` means "inherit from the next layer", `true` / `false` are explicit overrides.
+
+The resolver is a pure function; today there is no in-process cache (it was removed when a writer→reader race surfaced — for the size of the policy set, the cache wasn't worth the foot-gun). `bump_policy_version()` is kept as an extension point for a future cache-invalidation hook.
+
+## Per-detector overrides
+
+Inside each category card the **Advanced** drawer enumerates every registered detector (`rule_id`, label, tier, description). Disabling a detector here writes a `detector_overrides_json` entry on the global policy row; at enforcement time `apply_guardrails` drops every hit whose `rule_id` matches before level computation, no matter the scope.
+
+The full registry is in [`spark/privacy/detector_catalog.py`](https://github.com/Veilfire/EmberSpark/blob/main/spark/privacy/detector_catalog.py). Common toggles:
+
+- `credentials.api → high-entropy` — disable the catch-all if the named-vendor regexes already cover your workloads (lowest false-positive cost).
+- `pii.basic → presidio:DATE_TIME` / `presidio:URL` — keep email/phone redaction while letting URLs and dates through.
+- `cli.privilege → cli.sudo` — operators on a single-user host who run `sudo` legitimately want their own outputs to stop being scanned for it.
 
 ---
 
@@ -132,34 +169,42 @@ The chat handler turns this into a friendly error toast; the engine classifies i
 
 ## The UI
 
-**Security Center → Data Classes** has four panels:
+The configuration surface lives at **SECURE → Filtering**. See [Filtering page](Filtering-Page) for the deep-dive; the quick summary:
 
-### 1. Global policy
+- **Family sections** (PII / Financial / Credentials / CLI safety / Prompt safety) hold one **category card** each per class.
+- **Category card** (front) — level chip, level dropdown, mask-style picker (with a live preview rendered server-side), scope chips, min-confidence slider, consensus dropdown, "Advanced — N detectors" button.
+- **Advanced drawer** (per category) — enable/disable each registered detector by `rule_id`.
+- **Dry-run sandbox** (header button) — paste sample text + scope + agent, see the redacted output, hit table, and resolved policy snapshot without persisting anything.
 
-A table with every built-in class, its description, the current level, the scopes covered, and a source badge (`default` / `override`). Click **Edit** to change level and scope set. Selecting `block` as the level triggers an extra warning confirmation.
-
-### 2. Per-agent overrides
-
-Pick an agent; see each class with its effective level. You can **Set override** to diverge from the global policy, or **Revert** to fall back. Rows that inherit the global value are marked "inherits global/default".
-
-### 3. Unlimited grants
-
-Lists every active grant with agent, class, scopes, expiry, and revoke action. **New grant** opens a modal with typed-name confirmation, scope checkboxes, TTL input, and a "Permanent" opt-in (which triggers an extra danger-tone dialog).
-
-### 4. Recent detections (last 24h)
-
-Horizontal-bar rollup of audit events by class. Auto-refreshes every 30 seconds. Useful for calibration — turn on `warn` for a class in preview mode, watch the hit rate, then promote to `redact` or `block` once the FP rate is acceptable.
+The legacy **Security Center → Data Classes** tab now renders a one-paragraph notice that points at the Filtering page; it will be removed in the next release. **Per-agent overrides** and **unlimited grants** stay on Security Center.
 
 ---
 
 ## REST API
 
-Every mutation is audited under `kind=security.data_class.*`; grants at `critical`, policy edits at `elevated`.
+Two namespaces serve different operator surfaces:
+
+### `/api/filtering/*` (Filtering page)
+
+Edits the **global** category settings + per-detector overrides + dry-run. Each mutation is audited at `elevated` severity under `kind=security.filtering.*`:
+
+```
+GET    /api/filtering/policy                                      # one-shot snapshot
+PUT    /api/filtering/policy/category/{data_class}                # global category edit
+PUT    /api/filtering/policy/agent/{agent_name}/{data_class}      # agent override
+DELETE /api/filtering/policy/agent/{agent_name}/{data_class}      # revert agent
+PUT    /api/filtering/policy/category/{data_class}/detector/{rule_id}  # toggle one detector
+POST   /api/filtering/dry-run                                     # info-severity audit
+```
+
+### `/api/security/data-*` (Security Center — agent overrides + grants)
+
+Grants at `critical`, policy edits at `elevated`:
 
 ```
 GET    /api/security/data-classes                 # taxonomy + defaults
 GET    /api/security/data-policy                  # global + per-agent map
-PUT    /api/security/data-policy/global/{class}   # admin
+PUT    /api/security/data-policy/global/{class}   # admin (legacy — Filtering page is preferred)
 PUT    /api/security/data-policy/agent/{agent}/{class}
 DELETE /api/security/data-policy/agent/{agent}/{class}   # revert
 
@@ -169,6 +214,8 @@ DELETE /api/security/data-grants/{id}
 
 GET    /api/security/data-detections?hours=24
 ```
+
+Both namespaces back the same `data_class_policies` rows. Use `/api/filtering` for category + mask + detector + dry-run; use `/api/security/data-*` for grants and per-agent overrides until those move too.
 
 ---
 
@@ -188,6 +235,7 @@ Both route through the existing notification bell and appear in the per-kind tog
 ### "Allow this agent to handle credit cards"
 
 1. **Security Center → Data Classes → Unlimited grants → New grant**
+   (the **Data Classes** tab is being deprecated; grants stay here until that section moves to Filtering's right rail in a follow-up)
 2. Agent: `cc-processor`
 3. Class: `financial.card`
 4. Scopes: `user_input, tool_output, model_output, memory_write` (skip `shell_args` — that's for CLI patterns)
@@ -226,6 +274,7 @@ The agent's error payload carries `suggest_grant: true`. The operator:
 
 ## Further reading
 
+- [Filtering page](Filtering-Page) — the operator surface for everything in this doc (category cards, mask styles, advanced drawer, dry-run sandbox)
 - [Concepts: Privacy](Concepts-Privacy) — the pre-DCG privacy pipeline (still the first stage of redaction)
-- [Security Center Guide](Security-Center-Guide) — the surrounding UI
+- [Security Center Guide](Security-Center-Guide) — the surrounding UI (per-agent overrides + grants)
 - [Error Codes](Error-Codes) — `SPK_E_DATA_CLASS_BLOCKED` and remediation hints

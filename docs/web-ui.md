@@ -124,8 +124,10 @@ The default username/password login lands on **operator**. The token header shor
 | **Memory** | `/memory` | Long-term memory index browser + playbook stats (success rate, uses, avg tool calls). | operator |
 | **Skills** | `/skills` | Pending skill review queue (editable name/description/notes), approved skill list, disable control. | operator |
 | **Stats** | `/stats` | Rolling 7-day agent metrics — success rate, p50/p95 wall time, total cost, memory writes, skill approvals. | viewer |
-| **Security Center** | `/security` | 8-tab policy editor (see below). | operator / admin |
+| **Security Center** | `/security` | Multi-tab policy editor (see below). | operator / admin |
 | **Guardrails** | `/guardrails` | Last 24h aggregation of critical/elevated/info events, per-category counts, clickable into the audit log. | viewer |
+| **Filtering** | `/filtering` | Operator surface for the data-class guardrail engine. Per-category level / scopes / mask style / min-confidence / consensus + per-detector enable/disable in an Advanced drawer + a dry-run sandbox. Mutations audit at `elevated` under `kind=security.filtering.*`. | admin |
+| **Forensic** | `/forensic` | Encrypted per-run capture browser (prompts, model outputs, tool calls, memory events) gated behind opt-in + per-run age identity in the secrets vault. | admin |
 | **Audit Log** | `/audit` | Immutable change history with `kind` and `min_severity` filters. | viewer |
 | **Ops** | `/ops` | Sandbox backend health, data residency (DB/Chroma/logs disk footprint), plugin registry + hashes, live JSONL log tail. | viewer |
 
@@ -133,7 +135,7 @@ The default username/password login lands on **operator**. The token header shor
 
 ## Security Center tabs
 
-Eight sub-panels. All mutations audit-logged.
+All mutations audit-logged.
 
 | Tab | What it controls |
 |---|---|
@@ -143,6 +145,7 @@ Eight sub-panels. All mutations audit-logged.
 | **Sandbox** | Per-agent backend selection (`auto`/`bubblewrap`/`nsjail`/`seatbelt`), rlimits (CPU seconds, memory MB, max open files, max processes, wall timeout). **Cannot be disabled** — shown read-only with a "mandatory" badge. Includes a one-click self-test runner. |
 | **Plugins** | Per-agent plugin allowlist + permission grant matrix (fs.read, fs.write, net.http, secrets.read, subprocess). |
 | **Privacy** | Per-agent privacy mode, raw prompt / raw output logging toggles (both require double confirmation because they bypass redaction defaults). |
+| **Data Classes** | **Moved → SECURE → Filtering.** Tab still appears for one release as a redirect notice; per-agent overrides + grants stay here for now. |
 | **Secrets** | Name-only secret list + canary test (verify a secret is reachable without returning the value). Canary tests are audited at `info` so enumeration attempts are visible. |
 | **Trusted Docs** | The skill-discovery allowlist (distinct from the agent's network allowlist). Operators can add or remove doc hosts; default list is built in. |
 

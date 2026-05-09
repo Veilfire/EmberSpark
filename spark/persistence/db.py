@@ -202,6 +202,32 @@ def _apply_additive_migrations(sync_conn: Any) -> None:
     except Exception:  # pragma: no cover
         pass
 
+    # Additive migration for data_class_policies — filtering page knobs
+    # (mask style, min confidence, consensus toggle, per-detector
+    # overrides). All nullable / defaulted so upgraded DBs need no data.
+    policy_columns = [
+        ("mask_style", "TEXT"),
+        ("min_confidence", "REAL"),
+        ("require_consensus", "INTEGER"),
+        ("detector_overrides_json", "TEXT"),
+    ]
+    try:
+        existing = {
+            row[1]
+            for row in sync_conn.execute(
+                text("PRAGMA table_info('data_class_policies')")
+            ).fetchall()
+        }
+        for col_name, col_sql in policy_columns:
+            if col_name not in existing:
+                sync_conn.execute(
+                    text(
+                        f"ALTER TABLE data_class_policies ADD COLUMN {col_name} {col_sql}"
+                    )
+                )
+    except Exception:  # pragma: no cover
+        pass
+
     # Additive migration for triggers — webhook auth modes + lockout.
     trigger_columns = [
         ("auth_mode", "TEXT NOT NULL DEFAULT 'bearer'"),

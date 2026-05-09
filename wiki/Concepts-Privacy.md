@@ -2,6 +2,13 @@
 
 EmberSpark's privacy subsystem is **on by default**. You cannot accidentally log a secret, expose PII to the model, or store a raw transcript — each of these requires explicit opt-in that writes an elevated or critical audit entry.
 
+The privacy layer has two cooperating engines:
+
+1. The **legacy redaction pipeline** documented on this page (regex + entropy + Presidio NER → `[REDACTED:LABEL]`). It runs unconditionally on every log event and every promoted memory.
+2. The **Data Classification Guardrails** (DCG) — a content-aware policy layer with named classes, scope axes, mask-style rendering, and per-detector toggles. Operator surface lives at **SECURE → Filtering**. See [Data Classification Guardrails](Data-Classification-Guardrails) and the [Filtering page](Filtering-Page) for the deep-dive.
+
+DCG is a surgical overlay on top of the legacy pipeline. Both run; if a class is `block`-level for the current scope, DCG raises before the legacy pipeline gets to redact, so the operator's policy decision wins.
+
 ---
 
 ## Privacy modes
@@ -136,6 +143,8 @@ In `strict` mode, `RESTRICTED` content is blocked from all three. In `balanced`,
 
 ## Further reading
 
+- [Data Classification Guardrails](Data-Classification-Guardrails) — the policy-aware overlay (named classes, levels, scopes, grants)
+- [Filtering page](Filtering-Page) — operator surface for category cards, mask styles, per-detector toggles, dry-run
 - [Concepts: Memory](Concepts-Memory) — how sensitivity gates retrieval
 - [docs/logging-and-tracing.md](https://github.com/Veilfire/EmberSpark/blob/main/docs/logging-and-tracing.md) — redaction summary events and log structure
 - [docs/security-posture.md](https://github.com/Veilfire/EmberSpark/blob/main/docs/security-posture.md) — threat model

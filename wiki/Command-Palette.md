@@ -30,6 +30,7 @@ Earlier versions of EmberSpark exposed `g` + letter chords (e.g. `g c` for Chat,
 The command palette covers every page:
 
 - Overview
+- Provider
 - Agents
 - Chat
 - Runs
@@ -43,11 +44,13 @@ The command palette covers every page:
 - Skills
 - Stats
 - Security Center
+- Secrets
 - Guardrails
+- Filtering
+- Forensic
 - Audit Log
 - Ops
 - Settings
-- Forensic
 
 Fuzzy matching is substring-based on both the page label and a short hint, so typing `audit` finds Audit Log, typing `scheduling` finds Scheduler, typing `guard` finds Guardrails.
 
