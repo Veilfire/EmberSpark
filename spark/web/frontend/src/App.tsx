@@ -32,6 +32,7 @@ import Secrets from "./pages/Secrets";
 import Login from "./pages/Login";
 import { useAuth } from "./hooks/useAuth";
 import { ConfirmHost } from "./lib/confirm";
+import { DocumentTitle } from "./lib/documentTitle";
 
 export default function App() {
   const { authed, loading } = useAuth();
@@ -40,15 +41,19 @@ export default function App() {
   if (loading) return <div className="p-6 text-spark-muted">Loading…</div>;
   if (!authed) {
     return (
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
+      <>
+        <DocumentTitle />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </>
     );
   }
 
   return (
     <>
+      <DocumentTitle />
       <CommandPalette />
       <NotificationToaster />
       <ConfirmHost />
