@@ -158,6 +158,13 @@ def _opts_permission_missing(d: dict[str, Any]) -> list[TuningOption]:
     if isinstance(missing, str):
         missing = [missing]
     agent = _agent(d)
+
+    # Plugin-specific shapes — the home_assistant plugin emits richer
+    # detail keys so the inspector deep-links into the live-config
+    # editor with the matching checkbox / toggle pre-ticked + flashed.
+    if plugin == "home_assistant":
+        return _opts_home_assistant_permission(d)
+
     out: list[TuningOption] = [
         TuningOption(
             label="Re-scope the task so this permission isn't needed",
@@ -201,6 +208,126 @@ def _opts_permission_missing(d: dict[str, Any]) -> list[TuningOption]:
                 audit_kind="security.permissions.grant",
             )
         )
+    return out
+
+
+def _opts_home_assistant_permission(d: dict[str, Any]) -> list[TuningOption]:
+    """``home_assistant``-specific tuning options.
+
+    Three shapes the plugin emits:
+
+    - ``missing_domain``: domain not in ``allowed_domains``.
+    - ``missing_service``: ``"<domain>.<service>"`` not in
+      ``allowed_services[domain]``.
+    - ``missing_toggle: "read_only"``: ``read_only=true`` blocked
+      ``call_service``.
+
+    All three deep-link into the live-config editor on `/plugins` with
+    the matching checkbox / toggle pre-ticked + flashed via the
+    ``home_assistant_grant`` prefill kind.
+    """
+    out: list[TuningOption] = [
+        TuningOption(
+            label="Re-scope the task to avoid this domain / service",
+            description=(
+                "If the agent doesn't actually need to touch this part "
+                "of Home Assistant, tighten the prompt or hand the work "
+                "to a different agent."
+            ),
+            risk="None — preserves the existing allowlist.",
+            severity="low",
+        )
+    ]
+    missing_domain = d.get("missing_domain")
+    missing_service = d.get("missing_service")
+    missing_toggle = d.get("missing_toggle")
+
+    if missing_toggle == "read_only":
+        prefill = {"kind": "home_assistant_grant", "toggle": "read_only"}
+        out.append(
+            TuningOption(
+                label="Disable read_only on home_assistant",
+                description=(
+                    "Lets the plugin call services. Service-level allowlist "
+                    "still applies — only services in `allowed_services` fire."
+                ),
+                risk=(
+                    "Agent gains the ability to mutate HA state for any service "
+                    "you've allowlisted. Pair with a tight per-domain service list."
+                ),
+                severity="high",
+                deep_link=_link("/plugins", prefill=prefill, plugin="home_assistant"),
+                prefill=prefill,
+                audit_kind="security.plugin_config.update",
+            )
+        )
+        return out
+
+    if missing_service and isinstance(missing_service, str):
+        # Severity: danger services → critical chip, others → high.
+        from spark.plugins.builtins.home_assistant import service_risk  # noqa: PLC0415
+
+        try:
+            dom, svc = missing_service.split(".", 1)
+        except ValueError:
+            dom, svc = "", missing_service
+        risk = service_risk(dom, svc) if dom and svc else "elevated"
+        sev: Severity = "critical" if risk == "danger" else "high"
+        prefill = {"kind": "home_assistant_grant", "add_service": missing_service}
+        out.append(
+            TuningOption(
+                label=f"Allow `{missing_service}` on home_assistant",
+                description=(
+                    f"Adds {missing_service!r} to the per-domain "
+                    "service allowlist. The agent can call only this "
+                    "service in this domain — other services stay refused."
+                ),
+                risk=(
+                    f"Agent gains the ability to call `{missing_service}` "
+                    f"({risk}). Other services in the same domain remain refused."
+                ),
+                severity=sev,
+                deep_link=_link("/plugins", prefill=prefill, plugin="home_assistant"),
+                prefill=prefill,
+                audit_kind="security.plugin_config.update",
+            )
+        )
+        return out
+
+    if missing_domain and isinstance(missing_domain, str):
+        from spark.plugins.builtins.home_assistant import domain_risk  # noqa: PLC0415
+
+        risk = domain_risk(missing_domain)
+        sev = "critical" if risk == "danger" else "medium" if risk == "elevated" else "medium"
+        prefill = {"kind": "home_assistant_grant", "add_domain": missing_domain}
+        out.append(
+            TuningOption(
+                label=f"Allow `{missing_domain}` on home_assistant",
+                description=(
+                    f"Adds {missing_domain!r} to the home_assistant "
+                    "plugin's `allowed_domains`. The agent can read "
+                    "states for entities in this domain (and call "
+                    "services if both `read_only=false` AND a matching "
+                    "service is in the per-domain allowlist)."
+                ),
+                risk=(
+                    f"Agent gains visibility (and potentially control) over "
+                    f"every entity in the `{missing_domain}` domain "
+                    f"({risk}). High-risk domains (lock / camera / "
+                    "device_tracker / person / alarm_control_panel / "
+                    "vacuum) require typed-confirm on the editor before "
+                    "they activate."
+                ),
+                severity=sev,
+                deep_link=_link("/plugins", prefill=prefill, plugin="home_assistant"),
+                prefill=prefill,
+                audit_kind="security.plugin_config.update",
+            )
+        )
+        return out
+
+    # Fall through to the generic shape if the detail didn't match any
+    # of the home_assistant-specific keys.
     return out
 
 

@@ -4,6 +4,17 @@ import { toast } from "sonner";
 import { Info, ExternalLink } from "lucide-react";
 import { api } from "../lib/api";
 import { confirmDialog } from "../lib/confirm";
+import { HomeAssistantConfigEditor } from "../components/HomeAssistantConfigEditor";
+
+// Plugins that ship a bespoke editor (live-introspection grids etc.)
+// register here. The map is consulted in the active-plugin render
+// branch; everything else falls through to the auto-form.
+const CUSTOM_EDITORS: Record<
+  string,
+  React.ComponentType<{ info: PluginInfo }>
+> = {
+  home_assistant: HomeAssistantConfigEditor,
+};
 
 interface PluginInfo {
   plugin_name: string;
@@ -242,15 +253,19 @@ export default function PluginConfigPage() {
           ))}
         </div>
         <div className="flex-1 min-w-0">
-          {active && (
+          {active && (() => {
             // ``key`` forces a fresh component instance per plugin so
             // the inner ``useState(info.config)`` re-initializes from
             // the new plugin's config. Without this, switching plugins
             // in the sidebar leaves ``draft`` holding the previous
             // plugin's fields — Save then sends the wrong shape and
             // the backend 422s with ``extra_forbidden`` on every field.
-            <PluginEditor key={active.plugin_name} info={active} />
-          )}
+            const Custom = CUSTOM_EDITORS[active.plugin_name];
+            if (Custom) {
+              return <Custom key={active.plugin_name} info={active} />;
+            }
+            return <PluginEditor key={active.plugin_name} info={active} />;
+          })()}
         </div>
       </div>
     </div>

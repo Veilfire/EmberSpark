@@ -103,6 +103,7 @@ def default_registry() -> PluginRegistry:
     from spark.plugins.builtins.email_sender import EmailSenderPlugin
     from spark.plugins.builtins.filesystem import FilesystemPlugin
     from spark.plugins.builtins.git import GitPlugin
+    from spark.plugins.builtins.home_assistant import HomeAssistantPlugin
     from spark.plugins.builtins.http_client import HttpClientPlugin
     from spark.plugins.builtins.http_tool import HttpToolPlugin
     from spark.plugins.builtins.image_gen import ImageGenPlugin
@@ -139,6 +140,8 @@ def default_registry() -> PluginRegistry:
         # External integrations — outbound webhooks + Telegram bot
         WebhookPlugin,
         TelegramMessengerPlugin,
+        # Home automation
+        HomeAssistantPlugin,
     ):
         reg.register_class(cls)
     # Also discover any entry-point plugins installed in the environment.

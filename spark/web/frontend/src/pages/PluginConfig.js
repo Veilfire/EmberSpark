@@ -5,6 +5,13 @@ import { toast } from "sonner";
 import { Info, ExternalLink } from "lucide-react";
 import { api } from "../lib/api";
 import { confirmDialog } from "../lib/confirm";
+import { HomeAssistantConfigEditor } from "../components/HomeAssistantConfigEditor";
+// Plugins that ship a bespoke editor (live-introspection grids etc.)
+// register here. The map is consulted in the active-plugin render
+// branch; everything else falls through to the auto-form.
+const CUSTOM_EDITORS = {
+    home_assistant: HomeAssistantConfigEditor,
+};
 // ---------------------------------------------------------------------------
 // Plugin-specific help hints. Keyed as "plugin_name.field_name". These fill
 // in the gaps where a Pydantic schema alone can't capture "what does this
@@ -185,14 +192,19 @@ export default function PluginConfigPage() {
     }, [plugins.data, selected]);
     return (_jsxs("div", { className: "space-y-4", children: [_jsxs("header", { children: [_jsx("h2", { className: "text-2xl font-bold", children: "Plugins" }), _jsx("p", { className: "text-spark-muted text-sm", children: "Configure built-in plugins without editing YAML. Operator-edited values override the agent YAML on overlapping fields. Every save is audited." })] }), _jsxs("div", { className: "flex gap-4", children: [_jsx("div", { className: "panel p-2 w-56 shrink-0", children: (plugins.data ?? []).map((p) => (_jsxs("button", { onClick: () => setSelected(p.plugin_name), className: `block w-full text-left px-2 py-1.5 rounded-md text-sm ${active?.plugin_name === p.plugin_name
                                 ? "bg-spark-border text-spark-text"
-                                : "text-spark-muted hover:bg-spark-border/50"}`, children: [_jsx("div", { className: "font-mono", children: p.plugin_name }), _jsx("div", { className: "text-xs", children: p.version })] }, p.plugin_name))) }), _jsx("div", { className: "flex-1 min-w-0", children: active && (
-                        // ``key`` forces a fresh component instance per plugin so
-                        // the inner ``useState(info.config)`` re-initializes from
-                        // the new plugin's config. Without this, switching plugins
-                        // in the sidebar leaves ``draft`` holding the previous
-                        // plugin's fields — Save then sends the wrong shape and
-                        // the backend 422s with ``extra_forbidden`` on every field.
-                        _jsx(PluginEditor, { info: active }, active.plugin_name)) })] })] }));
+                                : "text-spark-muted hover:bg-spark-border/50"}`, children: [_jsx("div", { className: "font-mono", children: p.plugin_name }), _jsx("div", { className: "text-xs", children: p.version })] }, p.plugin_name))) }), _jsx("div", { className: "flex-1 min-w-0", children: active && (() => {
+                            // ``key`` forces a fresh component instance per plugin so
+                            // the inner ``useState(info.config)`` re-initializes from
+                            // the new plugin's config. Without this, switching plugins
+                            // in the sidebar leaves ``draft`` holding the previous
+                            // plugin's fields — Save then sends the wrong shape and
+                            // the backend 422s with ``extra_forbidden`` on every field.
+                            const Custom = CUSTOM_EDITORS[active.plugin_name];
+                            if (Custom) {
+                                return _jsx(Custom, { info: active }, active.plugin_name);
+                            }
+                            return _jsx(PluginEditor, { info: active }, active.plugin_name);
+                        })() })] })] }));
 }
 function PluginEditor({ info }) {
     const client = useQueryClient();

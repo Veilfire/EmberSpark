@@ -43,6 +43,7 @@ This is the operator's guide to the built-in EmberSpark plugins. It walks throug
 |---|---|---|
 | **webhook** | Outbound HMAC-signed POST to allowlisted hosts (Slack incoming hooks, Zapier, n8n, …) | Inert — empty `allow_hosts` |
 | **telegram_messenger** | Telegram Bot API (send / edit / inline keyboards / commands), pairs with the long-poll bot runner | Inert — empty `allow_chat_ids`; needs `telegram_bot_token` in vault |
+| **home_assistant** | View states + (opt-in) call services on Home Assistant. HA's HomeKit Controller integration bridges Apple HomeKit through the same surface. Custom Plugins-page editor with live-discovery checkbox grids; danger domains gated behind typed-confirm. See [Plugin Reference: home_assistant](Plugin-Reference-Home-Assistant). | Read-only; safe domains (light / switch / sensor / media_player / climate / scene / …) pre-checked; danger domains (lock / camera / device_tracker / person / alarm_control_panel / vacuum) excluded; needs `home_assistant_token` in vault + internal-IP grant |
 
 Most plugins ship **inert**. That's deliberate. You opt in explicitly by populating its config in the Plugins page of the web UI. The exceptions — `json_query` and `datetime` — have no network, no filesystem, no secrets, and no reason to be inert.
 

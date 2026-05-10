@@ -53,7 +53,13 @@ export type Prefill =
       suggested?: number | null;
     }
   | { kind: "cost_budget"; agent: string }
-  | { kind: "sandbox_timeout"; agent: string };
+  | { kind: "sandbox_timeout"; agent: string }
+  | {
+      kind: "home_assistant_grant";
+      add_domain?: string;
+      add_service?: string;
+      toggle?: "read_only";
+    };
 
 export type PrefillKind = Prefill["kind"];
 

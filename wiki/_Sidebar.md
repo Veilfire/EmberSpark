@@ -52,6 +52,7 @@
 - [email_sender](Plugin-Reference-Email-Sender)
 - [filesystem](Plugin-Reference-Filesystem)
 - [git](Plugin-Reference-Git)
+- [home_assistant](Plugin-Reference-Home-Assistant)
 - [http_client](Plugin-Reference-HTTP-Client)
 - [http_tool](Plugin-Reference-HTTP-Tool)
 - [image_gen](Plugin-Reference-Image-Gen)

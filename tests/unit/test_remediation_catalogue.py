@@ -133,6 +133,47 @@ def test_url_metadata_blocked_advertises_no_tuning() -> None:
     assert opts[0].severity == "critical"
 
 
+def test_home_assistant_missing_domain_emits_grant_prefill() -> None:
+    err = SparkError(
+        ErrorCode.PERMISSION_MISSING,
+        "home_assistant: domain device_tracker not in allowed_domains",
+        detail={"plugin": "home_assistant", "missing_domain": "device_tracker"},
+    )
+    opts = options_for(err.code, err.detail)
+    grant = next(o for o in opts if o.deep_link)
+    assert grant.prefill["kind"] == "home_assistant_grant"
+    assert grant.prefill["add_domain"] == "device_tracker"
+    # device_tracker is a danger domain → critical chip.
+    assert grant.severity == "critical"
+    assert "/plugins" in grant.deep_link
+
+
+def test_home_assistant_missing_service_emits_grant_prefill() -> None:
+    err = SparkError(
+        ErrorCode.PERMISSION_MISSING,
+        "home_assistant: service light.turn_off not in allowed_services",
+        detail={"plugin": "home_assistant", "missing_service": "light.turn_off"},
+    )
+    opts = options_for(err.code, err.detail)
+    grant = next(o for o in opts if o.deep_link)
+    assert grant.prefill["kind"] == "home_assistant_grant"
+    assert grant.prefill["add_service"] == "light.turn_off"
+    # light.turn_off is safe → high severity (mutating but low blast).
+    assert grant.severity in ("high",)
+
+
+def test_home_assistant_read_only_toggle_emits_prefill() -> None:
+    err = SparkError(
+        ErrorCode.PERMISSION_MISSING,
+        "home_assistant: read_only=true blocks call_service",
+        detail={"plugin": "home_assistant", "missing_toggle": "read_only"},
+    )
+    opts = options_for(err.code, err.detail)
+    grant = next(o for o in opts if o.deep_link)
+    assert grant.prefill == {"kind": "home_assistant_grant", "toggle": "read_only"}
+    assert grant.severity == "high"
+
+
 def test_data_class_blocked_offers_grant_with_target_class_prefilled() -> None:
     err = SparkError(
         ErrorCode.DATA_CLASS_BLOCKED,

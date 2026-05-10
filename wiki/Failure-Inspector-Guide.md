@@ -137,6 +137,7 @@ type TuningOption = {
 | `runtime_budget` | `/agents/<name>` | Pre-fills the runtime budget field |
 | `cost_budget` | `/cost` | Opens the budget-create form |
 | `sandbox_timeout` | `/security?tab=sandbox` | Pre-fills timeout_seconds |
+| `home_assistant_grant` | `/plugins?plugin=home_assistant` | Opens the live-introspection editor for the `home_assistant` plugin with the matching domain checkbox / service-matrix cell / `read_only` toggle pre-ticked + flashed amber. Danger domains (`lock` / `camera` / `device_tracker` / `person` / `alarm_control_panel` / `vacuum`) auto-trigger the typed-confirm modal so the operator sees the warning before allowing. |
 
 ---
 
