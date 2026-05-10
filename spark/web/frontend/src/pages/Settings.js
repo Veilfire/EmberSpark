@@ -69,6 +69,31 @@ const NOTIFICATION_KINDS = [
         label: "Data-class grant expiring",
         description: "An unlimited data-class grant is within 24 hours of its expiry — extend or let it lapse.",
     },
+    {
+        field: "gate_permission_denied",
+        label: "Permission denied",
+        description: "An agent tried to invoke a plugin or tool that wasn't on its allowlist or grant matrix. Click to open Security Center → Plugins.",
+    },
+    {
+        field: "gate_budget_exceeded",
+        label: "Budget exceeded",
+        description: "A run hit a per-run budget cap (iterations / model calls / tool calls / tokens). The cost hard-stop kind is separate.",
+    },
+    {
+        field: "gate_network_denied",
+        label: "Network denied",
+        description: "An agent tried to reach a host outside its allow_hosts, used a disallowed method, or hit a private/metadata IP.",
+    },
+    {
+        field: "gate_filesystem_denied",
+        label: "Filesystem denied",
+        description: "An agent tried to access a path outside allow_paths, or read a file larger than max_read_bytes.",
+    },
+    {
+        field: "gate_sandbox_failed",
+        label: "Sandbox failure",
+        description: "Sandbox refused, timed out, or crashed. Often signals a missing bwrap install, a slow plugin, or a runaway loop.",
+    },
 ];
 export default function Settings() {
     const qc = useQueryClient();

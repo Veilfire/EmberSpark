@@ -169,12 +169,28 @@ class SparkError(Exception):
         self.remediation = remediation or _DEFAULT_REMEDIATION.get(code)
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize for structured logs and model-facing payloads."""
+        """Serialize for structured logs and model-facing payloads.
+
+        ``tuning`` is a list of :class:`TuningOption` records the
+        Failure Inspector renders. The model-facing layers (planner
+        prompt, structured tool result) ignore it; only the operator
+        UI consumes it. The legacy ``remediation`` string stays as the
+        model-facing hint — short, no UI assumptions.
+        """
+        from spark.errors.remediation import options_for  # noqa: PLC0415
+
+        # Pass the message through to the catalogue so legacy raise
+        # sites that didn't bother with a structured ``detail`` (just a
+        # human-readable string like ``UrlDenied("Host 'foo' ...")``)
+        # still get reasonable extraction.
+        detail_with_msg = dict(self.detail)
+        detail_with_msg.setdefault("_message", self.message)
         return {
             "code": self.code.value,
             "message": self.message,
             "detail": self.detail,
             "remediation": self.remediation,
+            "tuning": [opt.to_dict() for opt in options_for(self.code, detail_with_msg)],
         }
 
     def __str__(self) -> str:

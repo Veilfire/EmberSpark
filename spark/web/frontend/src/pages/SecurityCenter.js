@@ -14,10 +14,9 @@ export default function SecurityCenter() {
                     ["sandbox", "Sandbox"],
                     ["plugins", "Plugins"],
                     ["privacy", "Privacy"],
-                    ["data-classes", "Data Classes"],
                     ["secrets", "Secrets"],
                     ["trusted-docs", "Trusted Docs"],
-                ].map(([key, label]) => (_jsx("button", { className: `btn ${section === key ? "btn-primary" : ""}`, onClick: () => setSection(key), children: label }, key))) }), section === "global" && _jsx(GlobalPanel, {}), section === "network" && _jsx(NetworkPanel, {}), section === "filesystem" && _jsx(FilesystemPanel, {}), section === "sandbox" && _jsx(SandboxPanel, {}), section === "plugins" && _jsx(PluginsPanel, {}), section === "privacy" && _jsx(PrivacyPanel, {}), section === "data-classes" && _jsx(DataClassesPanel, {}), section === "secrets" && _jsx(SecretsPanel, {}), section === "trusted-docs" && _jsx(TrustedDocsPanel, {})] }));
+                ].map(([key, label]) => (_jsx("button", { className: `btn ${section === key ? "btn-primary" : ""}`, onClick: () => setSection(key), children: label }, key))) }), section === "global" && _jsx(GlobalPanel, {}), section === "network" && _jsx(NetworkPanel, {}), section === "filesystem" && _jsx(FilesystemPanel, {}), section === "sandbox" && _jsx(SandboxPanel, {}), section === "plugins" && _jsx(PluginsPanel, {}), section === "privacy" && _jsx(PrivacyPanel, {}), section === "secrets" && _jsx(SecretsPanel, {}), section === "trusted-docs" && _jsx(TrustedDocsPanel, {})] }));
 }
 // -----------------------------------------------------------------------------
 function GlobalPanel() {
@@ -253,15 +252,4 @@ function TrustedDocsPanel() {
         client.invalidateQueries({ queryKey: ["trusted-docs"] });
     }
     return (_jsxs("div", { className: "space-y-4", children: [_jsxs("div", { className: "panel p-4", children: [_jsx("h3", { className: "font-semibold mb-2", children: "Trusted documentation sources" }), _jsx("p", { className: "text-xs text-spark-muted mb-3", children: "Hosts the skill discovery pipeline is allowed to fetch documentation from. Distinct from an agent's regular network allowlist." }), _jsxs("table", { className: "w-full text-sm", children: [_jsx("thead", { className: "text-spark-muted text-xs uppercase", children: _jsxs("tr", { children: [_jsx("th", { className: "text-left", children: "host" }), _jsx("th", { className: "text-left", children: "added by" }), _jsx("th", { className: "text-left", children: "notes" }), _jsx("th", {})] }) }), _jsx("tbody", { children: (docs.data ?? []).map((d) => (_jsxs("tr", { className: "border-t border-spark-border", children: [_jsx("td", { className: "py-1 font-mono", children: d.host }), _jsx("td", { children: d.added_by }), _jsx("td", { className: "text-spark-muted", children: d.notes }), _jsx("td", { children: d.added_by !== "default" && (_jsx("button", { className: "btn btn-danger", onClick: () => onRemove(d.host), children: "Remove" })) })] }, d.host))) })] })] }), _jsxs("form", { onSubmit: onAdd, className: "panel p-4 flex gap-2", children: [_jsx("input", { className: "input flex-1", name: "host", placeholder: "docs.example.com", required: true }), _jsx("input", { className: "input flex-1", name: "notes", placeholder: "notes" }), _jsx("button", { className: "btn btn-primary", type: "submit", children: "Add" })] })] }));
-}
-// -----------------------------------------------------------------------------
-// Data Classes panel — redirect to /filtering (kept one release for muscle-memory)
-// -----------------------------------------------------------------------------
-function DataClassesPanel() {
-    // Configuration of data-class levels, scopes, mask styles, and
-    // per-detector toggles moved to the dedicated Filtering page under
-    // SECURE → Filtering. This tab remains for one release as a redirect
-    // so links / muscle-memory don't 404 on operators upgrading from
-    // 0.x; remove in a follow-up once everyone has the new sidebar.
-    return (_jsxs("div", { className: "panel p-6 max-w-2xl", children: [_jsx("h3", { className: "font-semibold text-base mb-2", children: "Moved \u2192 SECURE \u2192 Filtering" }), _jsxs("p", { className: "text-sm text-spark-muted mb-4", children: ["Data-class levels, scopes, redaction mask styles, per-detector toggles, and the dry-run sandbox now live on the dedicated", " ", _jsx("a", { href: "/filtering", className: "text-spark-accent hover:underline", children: "Filtering" }), " ", "page. Per-agent overrides and time-bound grants stay on this Security Center for now."] }), _jsx("a", { href: "/filtering", className: "btn btn-primary text-sm inline-flex", children: "Open Filtering" })] }));
 }

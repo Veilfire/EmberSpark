@@ -1,11 +1,12 @@
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { useMemo, useState } from "react";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, FlaskConical, Save, RotateCcw, Settings2, ShieldCheck, } from "lucide-react";
+import { AlertTriangle, FlaskConical, KeyRound, Save, RotateCcw, Settings2, ShieldCheck, } from "lucide-react";
 import { api } from "../lib/api";
 import { toast } from "sonner";
 import { MaskStyleSelector, } from "../components/MaskStyleSelector";
 import { Modal } from "../components/Modal";
+import { useSuggestedPrefill } from "../lib/prefill";
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -48,6 +49,44 @@ function PolicyEditor({ data, qc, }) {
     const [pending, setPending] = useState({});
     const [drawerOpenFor, setDrawerOpenFor] = useState(null);
     const [dryRunOpen, setDryRunOpen] = useState(false);
+    const [grantsOpen, setGrantsOpen] = useState(false);
+    // Failure-Inspector deep-links land here. Two kinds:
+    //   data_class_level → highlight + flash the matching category card
+    //     and pre-stage a `level: redact` edit so the operator just hits Save.
+    //   data_class_grant → open the Grants drawer pre-filled with class
+    //     + agent + scope.
+    const [levelPrefill, discardLevelPrefill] = useSuggestedPrefill("data_class_level");
+    const [grantPrefill] = useSuggestedPrefill("data_class_grant");
+    const flashedCardRef = useRef(null);
+    // Open the Grants drawer when the URL carried a grant prefill.
+    useEffect(() => {
+        if (grantPrefill && !grantsOpen)
+            setGrantsOpen(true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [grantPrefill]);
+    // Stage a level edit when the URL carried a category-level prefill.
+    useEffect(() => {
+        if (!levelPrefill)
+            return;
+        setPending((p) => ({
+            ...p,
+            [levelPrefill.data_class]: {
+                ...(p[levelPrefill.data_class] || {}),
+                level: levelPrefill.level,
+                reason: "Suggested by failure inspector",
+            },
+        }));
+        // Scroll the matching card into view; flash effect comes from
+        // CategoryCard noticing levelPrefill via its own props.
+        const t = setTimeout(() => {
+            flashedCardRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+            });
+        }, 50);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [levelPrefill?.data_class, levelPrefill?.level]);
     const setEdit = (dataClass, patch) => {
         setPending((p) => ({
             ...p,
@@ -90,16 +129,30 @@ function PolicyEditor({ data, qc, }) {
     const drawerCategory = drawerOpenFor
         ? data.categories.find((c) => c.data_class === drawerOpenFor) ?? null
         : null;
-    return (_jsxs("div", { className: "space-y-6", children: [_jsxs("header", { className: "flex items-start justify-between gap-4", children: [_jsxs("div", { children: [_jsxs("h2", { className: "text-2xl font-bold flex items-center gap-2", children: [_jsx(ShieldCheck, { size: 22, className: "text-spark-accent" }), "Filtering"] }), _jsx("p", { className: "text-spark-muted text-sm mt-1 max-w-3xl", children: "Per-category control over the data-class guardrails. Pick a redaction style, choose which detectors run, and dry-run sample text before saving. Every save is audited at elevated severity." })] }), _jsxs("div", { className: "flex items-center gap-2", children: [_jsxs("button", { className: "btn btn-ghost text-sm", onClick: () => setDryRunOpen(true), children: [_jsx(FlaskConical, { size: 14, className: "mr-1.5 inline" }), "Dry-run"] }), isDirty && (_jsxs("button", { className: "btn text-sm", onClick: () => setPending({}), children: [_jsx(RotateCcw, { size: 14, className: "mr-1.5 inline" }), "Discard (", dirtyClasses.length, ")"] })), _jsxs("button", { className: "btn btn-primary text-sm", disabled: !isDirty || saveMutation.isPending, onClick: () => saveMutation.mutate(), children: [_jsx(Save, { size: 14, className: "mr-1.5 inline" }), saveMutation.isPending
+    return (_jsxs("div", { className: "space-y-6", children: [_jsxs("header", { className: "flex items-start justify-between gap-4", children: [_jsxs("div", { children: [_jsxs("h2", { className: "text-2xl font-bold flex items-center gap-2", children: [_jsx(ShieldCheck, { size: 22, className: "text-spark-accent" }), "Filtering"] }), _jsx("p", { className: "text-spark-muted text-sm mt-1 max-w-3xl", children: "Per-category control over the data-class guardrails. Pick a redaction style, choose which detectors run, and dry-run sample text before saving. Every save is audited at elevated severity." })] }), _jsxs("div", { className: "flex items-center gap-2", children: [_jsxs("button", { className: "btn btn-ghost text-sm", onClick: () => setGrantsOpen(true), children: [_jsx(KeyRound, { size: 14, className: "mr-1.5 inline" }), "Grants"] }), _jsxs("button", { className: "btn btn-ghost text-sm", onClick: () => setDryRunOpen(true), children: [_jsx(FlaskConical, { size: 14, className: "mr-1.5 inline" }), "Dry-run"] }), isDirty && (_jsxs("button", { className: "btn text-sm", onClick: () => setPending({}), children: [_jsx(RotateCcw, { size: 14, className: "mr-1.5 inline" }), "Discard (", dirtyClasses.length, ")"] })), _jsxs("button", { className: "btn btn-primary text-sm", disabled: !isDirty || saveMutation.isPending, onClick: () => saveMutation.mutate(), children: [_jsx(Save, { size: 14, className: "mr-1.5 inline" }), saveMutation.isPending
                                         ? "Saving…"
                                         : isDirty
                                             ? `Save ${dirtyClasses.length}`
-                                            : "Saved"] })] })] }), data.families.map((fam) => {
+                                            : "Saved"] })] })] }), levelPrefill && (_jsxs("div", { className: "panel p-3 border-amber-400/60 bg-amber-400/5 flex items-start gap-3", children: [_jsx(AlertTriangle, { size: 16, className: "text-amber-400 shrink-0 mt-0.5" }), _jsxs("div", { className: "flex-1 text-sm", children: [_jsx("strong", { children: "Suggested by failure inspector." }), " ", _jsx("code", { className: "font-mono text-xs", children: levelPrefill.data_class }), " ", "staged at ", _jsx("code", { className: "font-mono text-xs", children: levelPrefill.level }), ". Review the highlighted card and click Save when ready."] }), _jsx("button", { className: "btn btn-ghost text-xs", onClick: () => {
+                            discardLevelPrefill();
+                            discardEdit(levelPrefill.data_class);
+                        }, children: "Discard suggestion" })] })), data.families.map((fam) => {
                 const cats = data.categories.filter((c) => c.family === fam.id);
                 if (cats.length === 0)
                     return null;
-                return (_jsxs("section", { children: [_jsxs("h3", { className: "text-sm font-semibold tracking-wide uppercase text-spark-muted mb-3 flex items-center gap-2", children: [_jsx("span", { "aria-hidden": true, children: FAMILY_ICON[fam.id] ?? "•" }), fam.label] }), _jsx("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-4", children: cats.map((cat) => (_jsx(CategoryCard, { cat: cat, pending: pending[cat.data_class] || null, maskStyles: data.mask_styles, onChange: (patch) => setEdit(cat.data_class, patch), onDiscard: () => discardEdit(cat.data_class), onAdvanced: () => setDrawerOpenFor(cat.data_class) }, cat.data_class))) })] }, fam.id));
-            }), drawerCategory && (_jsx(DetectorDrawer, { cat: drawerCategory, onClose: () => setDrawerOpenFor(null), onChanged: () => qc.invalidateQueries({ queryKey: ["filtering", "policy"] }) })), dryRunOpen && (_jsx(DryRunSandbox, { categories: data.categories, onClose: () => setDryRunOpen(false) }))] }));
+                return (_jsxs("section", { children: [_jsxs("h3", { className: "text-sm font-semibold tracking-wide uppercase text-spark-muted mb-3 flex items-center gap-2", children: [_jsx("span", { "aria-hidden": true, children: FAMILY_ICON[fam.id] ?? "•" }), fam.label] }), _jsx("div", { className: "grid grid-cols-1 lg:grid-cols-2 gap-4", children: cats.map((cat) => {
+                                const isFlashed = levelPrefill?.data_class === cat.data_class;
+                                return (_jsx("div", { ref: isFlashed ? flashedCardRef : undefined, className: isFlashed
+                                        ? "ring-2 ring-amber-400/70 rounded-lg transition"
+                                        : "", children: _jsx(CategoryCard, { cat: cat, pending: pending[cat.data_class] || null, maskStyles: data.mask_styles, onChange: (patch) => setEdit(cat.data_class, patch), onDiscard: () => discardEdit(cat.data_class), onAdvanced: () => setDrawerOpenFor(cat.data_class) }) }, cat.data_class));
+                            }) })] }, fam.id));
+            }), drawerCategory && (_jsx(DetectorDrawer, { cat: drawerCategory, onClose: () => setDrawerOpenFor(null), onChanged: () => qc.invalidateQueries({ queryKey: ["filtering", "policy"] }) })), dryRunOpen && (_jsx(DryRunSandbox, { categories: data.categories, onClose: () => setDryRunOpen(false) })), grantsOpen && (_jsx(GrantsDrawer, { onClose: () => setGrantsOpen(false), prefill: grantPrefill
+                    ? {
+                        data_class: grantPrefill.data_class,
+                        agent: grantPrefill.agent,
+                        scope: grantPrefill.scope ?? null,
+                    }
+                    : null, knownClasses: data.categories.map((c) => c.data_class) }))] }));
 }
 function effectiveCategory(cat) {
     const o = cat.global_override;
@@ -202,4 +255,57 @@ function DryRunSandbox({ categories, onClose, }) {
         return map;
     }, [categories]);
     return (_jsx(Modal, { open: true, onClose: onClose, children: _jsxs("div", { className: "panel w-[920px] max-w-full max-h-[85vh] overflow-hidden flex flex-col", children: [_jsxs("div", { className: "p-4 border-b border-spark-border flex items-start justify-between", children: [_jsxs("div", { children: [_jsxs("div", { className: "text-xs text-spark-muted uppercase tracking-wide flex items-center gap-1.5", children: [_jsx(FlaskConical, { size: 12 }), " Sandbox"] }), _jsx("h3", { className: "text-lg font-semibold mt-0.5", children: "Dry-run filtering" }), _jsx("p", { className: "text-xs text-spark-muted mt-1 max-w-2xl", children: "Paste sample text, pick a scope and (optionally) an agent. Runs the resolved policy without persisting anything \u2014 the run itself is recorded as info-severity audit so we can spot abusive use." })] }), _jsx("button", { className: "btn btn-ghost text-sm", onClick: onClose, children: "Close" })] }), _jsxs("div", { className: "overflow-y-auto p-4 space-y-4", children: [_jsxs("div", { className: "grid grid-cols-2 gap-3", children: [_jsxs("div", { children: [_jsx("label", { className: "label block mb-1", children: "Scope" }), _jsx("select", { className: "input w-full text-sm", value: scope, onChange: (e) => setScope(e.target.value), children: ALL_SCOPES.map((s) => (_jsx("option", { value: s, children: s }, s))) })] }), _jsxs("div", { children: [_jsx("label", { className: "label block mb-1", children: "Agent (optional \u2014 leave blank for global)" }), _jsx("input", { className: "input w-full text-sm", placeholder: "my-agent", value: agent, onChange: (e) => setAgent(e.target.value) })] })] }), _jsxs("div", { children: [_jsx("label", { className: "label block mb-1", children: "Input" }), _jsx("textarea", { className: "input w-full text-sm font-mono", rows: 5, value: text, onChange: (e) => setText(e.target.value) })] }), _jsx("button", { className: "btn btn-primary text-sm", disabled: run.isPending || text.trim().length === 0, onClick: () => run.mutate(), children: run.isPending ? "Running…" : "Run" }), result && (_jsxs("div", { className: "space-y-3", children: [result.blocked ? (_jsxs("div", { className: "panel p-3 border-spark-danger/50 bg-spark-danger/5", children: [_jsxs("div", { className: "flex items-center gap-2 text-spark-danger", children: [_jsx(AlertTriangle, { size: 14 }), _jsx("strong", { className: "text-sm", children: "Blocked" }), _jsx("code", { className: "text-xs", children: result.error_code })] }), _jsx("p", { className: "text-sm mt-1", children: result.message })] })) : (_jsxs("div", { className: "grid grid-cols-2 gap-3", children: [_jsxs("div", { children: [_jsx("div", { className: "label mb-1", children: "Input" }), _jsx("pre", { className: "panel p-2 text-xs font-mono whitespace-pre-wrap break-words", children: result.input })] }), _jsxs("div", { children: [_jsx("div", { className: "label mb-1", children: "Redacted output" }), _jsx("pre", { className: "panel p-2 text-xs font-mono whitespace-pre-wrap break-words", children: result.output ?? "(blocked)" })] })] })), _jsxs("div", { children: [_jsxs("div", { className: "label mb-1", children: ["Hits (", result.hits.length, ")"] }), result.hits.length === 0 ? (_jsx("p", { className: "text-sm text-spark-muted", children: "Nothing matched. The category levels you have set didn't fire on this input." })) : (_jsxs("table", { className: "w-full text-xs", children: [_jsx("thead", { className: "text-spark-muted", children: _jsxs("tr", { children: [_jsx("th", { className: "text-left py-1.5 pr-3", children: "Class" }), _jsx("th", { className: "text-left py-1.5 pr-3", children: "Detector" }), _jsx("th", { className: "text-left py-1.5 pr-3", children: "Match" }), _jsx("th", { className: "text-left py-1.5 pr-3", children: "Tier" }), _jsx("th", { className: "text-right py-1.5", children: "Confidence" })] }) }), _jsx("tbody", { className: "divide-y divide-spark-border", children: result.hits.map((h, i) => (_jsxs("tr", { children: [_jsx("td", { className: "py-1.5 pr-3 font-mono", children: h.data_class }), _jsx("td", { className: "py-1.5 pr-3", children: ruleLabel[h.rule_id] ?? h.rule_id }), _jsx("td", { className: "py-1.5 pr-3 font-mono text-spark-muted truncate max-w-[180px]", children: h.matched }), _jsx("td", { className: "py-1.5 pr-3", children: _jsx("span", { className: "chip text-[10px]", children: h.tier }) }), _jsx("td", { className: "py-1.5 text-right font-mono", children: h.confidence.toFixed(2) })] }, i))) })] }))] })] }))] })] }) }));
+}
+function GrantsDrawer({ onClose, prefill, knownClasses, }) {
+    const qc = useQueryClient();
+    const grants = useQuery({
+        queryKey: ["filtering", "grants"],
+        queryFn: () => api.get("/api/security/data-grants"),
+    });
+    // Form state — pre-populated from the inspector deep-link when present.
+    const [showForm, setShowForm] = useState(prefill !== null);
+    const [agentName, setAgentName] = useState(prefill?.agent ?? "");
+    const [dataClass, setDataClass] = useState(prefill?.data_class ?? "");
+    const [scopes, setScopes] = useState(prefill?.scope ? [prefill.scope] : ["tool_output"]);
+    const [reason, setReason] = useState(prefill ? "Suggested by failure inspector" : "");
+    const [ttlHours, setTtlHours] = useState(168);
+    const [confirmName, setConfirmName] = useState("");
+    const create = useMutation({
+        mutationFn: () => api.post("/api/security/data-grants", {
+            agent_name: agentName,
+            data_class: dataClass,
+            scopes,
+            level_override: "allow",
+            reason,
+            ttl_hours: ttlHours,
+            confirm_agent_name: confirmName,
+        }),
+        onSuccess: () => {
+            toast.success(`Granted ${dataClass} to ${agentName}`);
+            qc.invalidateQueries({ queryKey: ["filtering", "grants"] });
+            // Clear the form + suggestion banner.
+            setShowForm(false);
+            setConfirmName("");
+            setReason("");
+        },
+        onError: (e) => toast.error(`Grant failed: ${e.message}`),
+    });
+    const revoke = useMutation({
+        mutationFn: (id) => api.del(`/api/security/data-grants/${id}`),
+        onSuccess: () => {
+            toast.success("Grant revoked");
+            qc.invalidateQueries({ queryKey: ["filtering", "grants"] });
+        },
+        onError: (e) => toast.error(`Revoke failed: ${e.message}`),
+    });
+    const canSubmit = agentName.trim().length > 0 &&
+        dataClass.trim().length > 0 &&
+        scopes.length > 0 &&
+        reason.trim().length > 0 &&
+        confirmName.trim() === agentName.trim() &&
+        !create.isPending;
+    return (_jsx(Modal, { open: true, onClose: onClose, children: _jsxs("div", { className: "panel w-[760px] max-w-full max-h-[85vh] overflow-hidden flex flex-col", children: [_jsxs("div", { className: "p-4 border-b border-spark-border flex items-start justify-between", children: [_jsxs("div", { children: [_jsxs("div", { className: "text-xs text-spark-muted uppercase tracking-wide flex items-center gap-1.5", children: [_jsx(KeyRound, { size: 12 }), " Data-class grants"] }), _jsx("h3", { className: "text-lg font-semibold mt-0.5", children: "Time-bounded carve-outs" }), _jsxs("p", { className: "text-xs text-spark-muted mt-1 max-w-2xl", children: ["A grant lets one agent handle a normally-blocked data class for a bounded TTL. Audited at ", _jsx("em", { children: "critical" }), " severity. Per-agent overrides on the Filtering categories don't require a grant \u2014 those are policy edits; this is for carve-outs that bypass the policy entirely."] })] }), _jsx("button", { className: "btn btn-ghost text-sm", onClick: onClose, children: "Close" })] }), _jsxs("div", { className: "overflow-y-auto p-4 space-y-4", children: [prefill && showForm && (_jsxs("div", { className: "panel p-3 border-amber-400/60 bg-amber-400/5 text-sm", children: [_jsx("strong", { children: "Suggested by failure inspector." }), " Form pre-filled with", " ", _jsx("code", { className: "font-mono text-xs", children: prefill.data_class }), " /", " ", _jsx("code", { className: "font-mono text-xs", children: prefill.agent }), prefill.scope && (_jsxs(_Fragment, { children: [" ", "/ ", _jsx("code", { className: "font-mono text-xs", children: prefill.scope })] })), ". Type the agent name in the confirm field below to enable Grant."] })), !showForm && (_jsx("button", { className: "btn btn-primary text-sm", onClick: () => setShowForm(true), children: "+ New grant" })), showForm && (_jsxs("div", { className: "panel p-4 space-y-3", children: [_jsxs("div", { className: "grid grid-cols-2 gap-3", children: [_jsxs("div", { children: [_jsx("label", { className: "label block mb-1", children: "Agent" }), _jsx("input", { className: "input w-full text-sm", placeholder: "my-agent", value: agentName, onChange: (e) => setAgentName(e.target.value) })] }), _jsxs("div", { children: [_jsx("label", { className: "label block mb-1", children: "Data class" }), _jsxs("select", { className: "input w-full text-sm", value: dataClass, onChange: (e) => setDataClass(e.target.value), children: [_jsx("option", { value: "", children: "\u2014 pick a class \u2014" }), knownClasses.map((c) => (_jsx("option", { value: c, children: c }, c)))] })] })] }), _jsxs("div", { children: [_jsx("label", { className: "label block mb-1.5", children: "Scopes" }), _jsx("div", { className: "flex flex-wrap gap-2", children: ALL_SCOPES.map((s) => {
+                                                const active = scopes.includes(s);
+                                                return (_jsx("button", { type: "button", onClick: () => setScopes(active ? scopes.filter((x) => x !== s) : [...scopes, s]), className: `chip text-[11px] ${active ? "chip-info" : ""}`, children: s }, s));
+                                            }) })] }), _jsxs("div", { className: "grid grid-cols-2 gap-3", children: [_jsxs("div", { children: [_jsx("label", { className: "label block mb-1", children: "TTL (hours)" }), _jsx("input", { type: "number", min: 1, max: 720, className: "input w-full text-sm", value: ttlHours, onChange: (e) => setTtlHours(Math.max(1, parseInt(e.target.value, 10) || 1)) }), _jsx("p", { className: "text-[10px] text-spark-muted mt-1", children: "Default 168 (7 days). Max 720 (30 days). Pair with the shortest plausible TTL." })] }), _jsxs("div", { children: [_jsx("label", { className: "label block mb-1", children: "Confirm agent name" }), _jsx("input", { className: "input w-full text-sm font-mono", placeholder: agentName || "(type agent name)", value: confirmName, onChange: (e) => setConfirmName(e.target.value) }), confirmName && confirmName !== agentName && (_jsx("p", { className: "text-[10px] text-spark-danger mt-1", children: "Doesn't match \u2014 typed-confirm gate" }))] })] }), _jsxs("div", { children: [_jsx("label", { className: "label block mb-1", children: "Reason" }), _jsx("textarea", { className: "input w-full text-sm", rows: 2, placeholder: "Why does this agent need this carve-out?", value: reason, onChange: (e) => setReason(e.target.value) })] }), _jsxs("div", { className: "flex items-center justify-end gap-2", children: [_jsx("button", { className: "btn btn-ghost text-sm", onClick: () => setShowForm(false), children: "Cancel" }), _jsx("button", { className: "btn btn-primary text-sm", disabled: !canSubmit, onClick: () => create.mutate(), children: create.isPending ? "Granting…" : "Grant" })] })] })), _jsxs("div", { children: [_jsx("div", { className: "label mb-2", children: "Active grants" }), grants.isLoading ? (_jsx("p", { className: "text-sm text-spark-muted", children: "Loading\u2026" })) : !grants.data || grants.data.length === 0 ? (_jsx("p", { className: "text-sm text-spark-muted", children: "No active grants. Carve-outs you create here appear in this list with their TTL and revoke control." })) : (_jsxs("table", { className: "w-full text-xs", children: [_jsx("thead", { className: "text-spark-muted", children: _jsxs("tr", { children: [_jsx("th", { className: "text-left py-1.5 pr-3", children: "Agent" }), _jsx("th", { className: "text-left py-1.5 pr-3", children: "Class" }), _jsx("th", { className: "text-left py-1.5 pr-3", children: "Scopes" }), _jsx("th", { className: "text-left py-1.5 pr-3", children: "Expires" }), _jsx("th", { className: "text-right py-1.5" })] }) }), _jsx("tbody", { className: "divide-y divide-spark-border", children: grants.data.map((g) => (_jsxs("tr", { children: [_jsx("td", { className: "py-1.5 pr-3 font-mono", children: g.agent_name }), _jsx("td", { className: "py-1.5 pr-3 font-mono", children: g.data_class }), _jsx("td", { className: "py-1.5 pr-3 text-spark-muted", children: g.scopes.join(", ") }), _jsx("td", { className: "py-1.5 pr-3 text-spark-muted", children: g.expires_at ?? "permanent" }), _jsx("td", { className: "py-1.5 text-right", children: _jsx("button", { className: "btn-ghost text-xs text-spark-danger", onClick: () => revoke.mutate(g.id), disabled: revoke.isPending, children: "Revoke" }) })] }, g.id))) })] }))] })] })] }) }));
 }

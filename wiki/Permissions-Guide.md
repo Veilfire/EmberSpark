@@ -310,5 +310,6 @@ Click **Run self-test** in the Security Center → Sandbox tab. It verifies the 
 
 - [Concepts: Permissions](Concepts-Permissions) — the abstract model
 - [Security Center Guide](Security-Center-Guide) — the UI for editing permissions
+- [Failure Inspector](Failure-Inspector-Guide) — when a permission/budget/sandbox/network/filesystem gate refuses an operation, the inspector surfaces the matched element + ranked tuning options + risks, and deep-links to the page that fixes it
 - [Using Plugins](Using-Plugins) — the per-plugin operator workflow
 - [docs/tools-and-permissions.md](https://github.com/Veilfire/EmberSpark/blob/main/docs/tools-and-permissions.md) — source-level reference

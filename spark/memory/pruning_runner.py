@@ -17,7 +17,10 @@ from typing import TYPE_CHECKING
 
 from spark.logging import EventType, get_logger
 from spark.memory.pruning import PruningReport, run_pruning_pass
-from spark.notifications import NotificationKind, get_notification_service
+
+# spark.notifications imports spark.web.events which can trigger a
+# circular load when this module is reached from a cold-start CLI.
+# Defer the import inside the only function that uses it.
 from spark.persistence.db import session_scope
 from spark.persistence.learning_repos import AuditRepository
 
@@ -77,6 +80,11 @@ async def run_memory_pruning_job(
         )
 
     if cfg.notify_on_prune and not effective_dry_run and report.total > 0:
+        from spark.notifications import (  # noqa: PLC0415
+            NotificationKind,
+            get_notification_service,
+        )
+
         svc = get_notification_service()
         summary = ", ".join(
             f"{cls}:{count}" for cls, count in sorted(report.by_class.items())

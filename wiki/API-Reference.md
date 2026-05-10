@@ -170,9 +170,10 @@ The token header grants **admin** role; cookie auth grants **admin** role on log
 
 | Method | Path | Role | Purpose |
 |---|---|---|---|
-| `GET` | `/api/replay/{run_id}` | viewer | Run replay payload — metadata, **`result_text`** (planner's final response, markdown), **`summary`** (reflection digest), **`trigger_payload_json`** (raw inbound body if any), **`triggered_by`** (chain lineage), **`deliverables[]`** (files this run produced), and the full span list for the flame graph. |
+| `GET` | `/api/replay/{run_id}` | viewer | Run replay payload — metadata, **`result_text`** (planner's final response, markdown), **`summary`** (reflection digest), **`trigger_payload_json`** (raw inbound body if any), **`triggered_by`** (chain lineage), **`deliverables[]`** (files this run produced), **`error_payload`** (parsed `SparkError.to_dict()` when the run failed via a structured exception, else `null`), and the full span list for the flame graph. |
 | `GET` | `/api/stats/` | viewer | Rolling 7-day agent metrics |
-| `GET` | `/api/guardrails/?hours=24` | viewer | Aggregated security events for the dashboard |
+| `GET` | `/api/guardrails/?hours=24` | viewer | Aggregated security events for the dashboard. Now also returns `category_kinds` mapping each category to its primary audit `kind` so the dashboard can deep-link `/audit?kind=…`. |
+| `GET` | `/api/guardrails/offenders?kind=X&hours=24&limit=5` | viewer | Top-N actors and targets for an audit kind in the time window — drives the [Failure Inspector](Failure-Inspector-Guide)'s offenders mini-table. |
 | `GET` | `/api/annotations/?kind=X&target_id=Y` | viewer | List operator notes |
 | `POST` | `/api/annotations/` | operator | Create a note |
 | `DELETE` | `/api/annotations/{id}` | operator | Delete a note |

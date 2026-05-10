@@ -3,6 +3,11 @@ import { useParams } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { MarkdownView } from "../components/MarkdownView";
+import {
+  FailureInspector,
+  SparkErrorView,
+  isSparkError,
+} from "../components/FailureInspector";
 
 interface SpanRow {
   id: number;
@@ -64,6 +69,10 @@ interface ReplayData {
   trigger_payload_json: string | null;
   triggered_by: string | null;
   error: string | null;
+  /** Parsed SparkError when the run failed via a structured exception.
+   * Null for runs that failed with a bare exception or that legacy-
+   * stored a plain-string error. Frontend feature-detects on shape. */
+  error_payload?: SparkErrorView | null;
   cost?: CostBlock;
   model_call_events?: ModelCallEvent[];
   deliverables: DeliverableLink[];
@@ -108,7 +117,17 @@ export default function Replay() {
       {r.error && (
         <section className="panel p-4 border-spark-danger/40">
           <h3 className="font-semibold mb-2 text-spark-danger">Error</h3>
-          <pre className="text-sm whitespace-pre-wrap text-spark-text">{r.error}</pre>
+          {isSparkError(r.error_payload) ? (
+            <FailureInspector
+              error={r.error_payload}
+              context={{ agent_name: r.agent_name, run_id: r.run_id }}
+              variant="inline"
+            />
+          ) : (
+            <pre className="text-sm whitespace-pre-wrap text-spark-text">
+              {r.error}
+            </pre>
+          )}
         </section>
       )}
 

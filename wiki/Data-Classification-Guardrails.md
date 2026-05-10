@@ -176,7 +176,7 @@ The configuration surface lives at **SECURE → Filtering**. See [Filtering page
 - **Advanced drawer** (per category) — enable/disable each registered detector by `rule_id`.
 - **Dry-run sandbox** (header button) — paste sample text + scope + agent, see the redacted output, hit table, and resolved policy snapshot without persisting anything.
 
-The legacy **Security Center → Data Classes** tab now renders a one-paragraph notice that points at the Filtering page; it will be removed in the next release. **Per-agent overrides** and **unlimited grants** stay on Security Center.
+The legacy **Security Center → Data Classes** tab was removed entirely. **Unlimited grants**, per-agent overrides, and the dry-run sandbox now live on the Filtering page (header → **Grants** drawer for grants).
 
 ---
 
@@ -234,8 +234,7 @@ Both route through the existing notification bell and appear in the per-kind tog
 
 ### "Allow this agent to handle credit cards"
 
-1. **Security Center → Data Classes → Unlimited grants → New grant**
-   (the **Data Classes** tab is being deprecated; grants stay here until that section moves to Filtering's right rail in a follow-up)
+1. **SECURE → Filtering → Grants → + New grant** (or click an "Open" button in a `DATA_CLASS_BLOCKED` Failure Inspector — it opens this drawer pre-filled).
 2. Agent: `cc-processor`
 3. Class: `financial.card`
 4. Scopes: `user_input, tool_output, model_output, memory_write` (skip `shell_args` — that's for CLI patterns)

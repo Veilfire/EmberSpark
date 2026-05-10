@@ -1,6 +1,6 @@
 # Security Center Guide
 
-The Security Center is the multi-tab policy editor at `/security` in the web UI. This page walks each tab and the operator workflows for each. Note: configuration of data-class levels, scopes, mask styles, and per-detector toggles moved to the dedicated [Filtering page](Filtering-Page); the **Data Classes** tab here renders a redirect notice and will be removed in the next release.
+The Security Center is the multi-tab policy editor at `/security` in the web UI. This page walks each tab and the operator workflows for each. The **Data Classes** tab was removed — every knob it used to host (levels, scopes, mask styles, per-detector toggles, grants, dry-run sandbox) lives on the dedicated [Filtering page](Filtering-Page).
 
 All mutations in the Security Center write `audit_log` entries. Critical mutations (freeze, internal-IP grants, raw logging, trusted-doc edits) use `critical` severity and show up in the Incident Banner.
 
@@ -167,25 +167,25 @@ When enabled, raw prompt + output content lands in the JSONL log bypassing all r
 
 ---
 
-## Tab 7 — Data Classes (moved → SECURE → Filtering)
+## Data Classes (tab removed)
 
-The flat per-class table lived here historically. Configuration of data-class **levels**, **scopes**, **mask styles**, **min confidence**, **consensus toggle**, and **per-detector enable/disable** moved to the dedicated **SECURE → Filtering** page, which also adds a paste-and-test dry-run sandbox.
+The flat per-class table that lived here in earlier releases is
+**gone**. Every operator-tunable knob — levels, scopes, mask styles,
+min-confidence, consensus, per-detector toggles, **grants**, dry-run
+sandbox — now lives on the dedicated **SECURE → Filtering** page. The
+tab itself was removed in the failure-inspector wave.
 
-What remains on Security Center for now:
+Bookmarks pointing at `/security?tab=data-classes` should move to
+`/filtering`. The underlying audit kinds (`security.data_class.*`)
+are unchanged for callers reading the audit log.
 
-- **Per-agent overrides** — pick an agent, set a class-level override or revert to inherit the global value. (Will move to Filtering's right rail in a follow-up.)
-- **Unlimited grants** — explicit carve-outs. The pattern for "this agent handles credit cards as part of its job, allow `financial.card`." Requires typed-name confirmation, TTL (default 7 days, permanent requires extra danger confirm), audited critical.
-
-This tab itself now renders a one-paragraph notice that points at `/filtering`. It will be removed in the next release.
-
-Full reference:
-
-- [Filtering page](Filtering-Page) — the operator surface.
-- [Data Classification Guardrails](Data-Classification-Guardrails) — the engine.
+See [Filtering page](Filtering-Page) and the
+[Data Classification Guardrails](Data-Classification-Guardrails)
+engine reference.
 
 ---
 
-## Tab 8 — Secrets
+## Tab 7 — Secrets
 
 View the list of secret names available to the runtime. Values are **never** shown — this tab only displays names.
 
@@ -203,7 +203,7 @@ Type a secret name and click Test. The runtime attempts to resolve the secret vi
 
 ---
 
-## Tab 9 — Trusted Docs
+## Tab 8 — Trusted Docs
 
 The allowlist of hosts that the **skill discovery** subgraph is permitted to fetch documentation from. This is a separate list from the agent's `network.allow_hosts`.
 

@@ -9,6 +9,7 @@ import { RelativeTime } from "../components/RelativeTime";
 import { EmptyState } from "../components/primitives";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Modal } from "../components/Modal";
+import { FailureInspector, WhyToggle, isSparkError, } from "../components/FailureInspector";
 const DEFAULT_CONTEXT = {
     max_history_messages: 20,
     include_long_term_memory: true,
@@ -208,6 +209,12 @@ export default function Chat() {
                             const c = data.data?.content;
                             return typeof c === "string" ? c : JSON.stringify(c);
                         })();
+                    // The backend now ships `error_payload` carrying the full
+                    // SparkError.to_dict() shape. Stash it on the message so the
+                    // FailureInspector can render beneath the thin error line.
+                    const errorPayload = isErr && isSparkError(data.data?.error_payload)
+                        ? data.data.error_payload
+                        : undefined;
                     setMessages((m) => [
                         ...m,
                         {
@@ -215,13 +222,24 @@ export default function Chat() {
                             content: `${isErr ? "✗" : "←"} ${plugin}: ${typeof body === "string" && body.length > 240
                                 ? body.slice(0, 240) + "…"
                                 : body}`,
+                            errorPayload,
                         },
                     ]);
                 }
                 else if (data.kind === "error") {
+                    // Input guardrail block + similar one-shot errors. Backend
+                    // sends `error: SparkError.to_dict()` alongside the legacy
+                    // `content` string.
+                    const errorPayload = isSparkError(data.error)
+                        ? data.error
+                        : undefined;
                     setMessages((m) => [
                         ...m,
-                        { kind: "system", content: `error: ${data.content}` },
+                        {
+                            kind: "system",
+                            content: `error: ${data.content}`,
+                            errorPayload,
+                        },
                     ]);
                     setStreaming(false);
                 }
@@ -343,9 +361,15 @@ function MessageBubble({ message: m }) {
         return (_jsxs("div", { className: "relative group max-w-[90%]", children: [_jsx(MarkdownView, { content: m.content, className: "text-spark-text text-sm" }), _jsx("button", { className: "absolute -right-8 top-1 opacity-0 group-hover:opacity-100 btn-icon text-spark-muted", onClick: copy, title: "Copy", children: copied ? (_jsx(Check, { className: "w-3 h-3 text-spark-good" })) : (_jsx(Copy, { className: "w-3 h-3" })) }), m.citations && m.citations.length > 0 && (_jsx(CitationsFooter, { citations: m.citations }))] }));
     }
     if (m.kind === "tool") {
-        return (_jsx("pre", { className: "text-xs font-mono text-spark-accent bg-spark-bg border border-spark-border rounded p-2 overflow-x-auto whitespace-pre-wrap max-w-[90%]", children: m.content }));
+        return (_jsxs("div", { className: "max-w-[90%] space-y-1.5", children: [_jsx("pre", { className: "text-xs font-mono text-spark-accent bg-spark-bg border border-spark-border rounded p-2 overflow-x-auto whitespace-pre-wrap", children: m.content }), m.errorPayload && _jsx(ChatFailurePanel, { error: m.errorPayload })] }));
     }
-    return _jsx("div", { className: "text-spark-danger text-xs", children: m.content });
+    // Fallback: system messages and unknown kinds. Render thin error
+    // line + the FailureInspector if a structured payload was attached.
+    return (_jsxs("div", { className: "max-w-[90%] space-y-1.5", children: [_jsx("div", { className: "text-spark-danger text-xs", children: m.content }), m.errorPayload && _jsx(ChatFailurePanel, { error: m.errorPayload })] }));
+}
+function ChatFailurePanel({ error }) {
+    const [open, setOpen] = useState(false);
+    return (_jsxs("div", { children: [_jsx(WhyToggle, { open: open, onClick: () => setOpen((o) => !o) }), open && _jsx(FailureInspector, { error: error, variant: "inline" })] }));
 }
 function CitationsFooter({ citations }) {
     const [open, setOpen] = useState(false);

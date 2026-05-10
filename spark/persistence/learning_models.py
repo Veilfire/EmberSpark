@@ -527,6 +527,15 @@ class NotificationPreferencesRow(SQLModel, table=True):
     memory_review_needed: bool = True
     data_class_blocked: bool = True
     data_class_grant_expiring: bool = True
+    # Gate-family kinds — one per family, see ``NotificationKind.GATE_*``.
+    # Default on so operators see denials by default; very chatty gates
+    # are deduped per (agent, code, target) over a 5-minute window so a
+    # tight loop doesn't flood the bell.
+    gate_permission_denied: bool = True
+    gate_budget_exceeded: bool = True
+    gate_network_denied: bool = True
+    gate_filesystem_denied: bool = True
+    gate_sandbox_failed: bool = True
     play_sound: bool = False
     toast_on_create: bool = True
     updated_at: datetime = Field(default_factory=_utcnow)

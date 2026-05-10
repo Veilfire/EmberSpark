@@ -2,8 +2,33 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+
+
+def _parse_spark_error(error_text: str | None) -> dict[str, Any] | None:
+    """Try to decode ``run.error`` as a serialized :class:`SparkError`.
+
+    Returns the parsed dict only when it has the canonical SparkError
+    shape (``code`` starting with ``SPK_E_``). Anything else (legacy
+    plain-string errors, JSON that isn't a SparkError dump) yields
+    ``None`` so the frontend can fall back to the raw text.
+    """
+    if not error_text:
+        return None
+    try:
+        parsed = json.loads(error_text)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    code = parsed.get("code")
+    if isinstance(code, str) and code.startswith("SPK_E_"):
+        return parsed
+    return None
 
 from spark.persistence.db import session_scope
 from spark.persistence.learning_repos import (
@@ -84,6 +109,12 @@ async def get_run_replay(
         "trigger_payload_json": run.trigger_payload_json,
         "triggered_by": run.triggered_by,
         "error": run.error,
+        # When the run failed via a SparkError, the engine writes
+        # ``json.dumps(spark_err.to_dict())`` to ``run.error`` so the
+        # replay UI can render a FailureInspector. Old rows (plain
+        # strings) and runs that failed via bare exceptions stay
+        # readable — frontend feature-detects on shape.
+        "error_payload": _parse_spark_error(run.error),
         "cost": cost_block,
         "model_call_events": model_calls,
         "deliverables": [

@@ -318,6 +318,23 @@ def _write_engine_deliverable(
     }
 
 
+def _format_run_error(exc: BaseException) -> str:
+    """Format an exception for ``TaskRunRow.error``.
+
+    SparkError → ``json.dumps(to_dict())`` so the replay endpoint can
+    parse it back and the UI renders a FailureInspector. Anything else
+    keeps the legacy ``"<ExcType>: <msg>"`` shape.
+    """
+    import json as _json  # noqa: PLC0415
+
+    if isinstance(exc, SparkError):
+        try:
+            return _json.dumps(exc.to_dict(), default=str)
+        except Exception:  # pragma: no cover — defensive
+            return f"{type(exc).__name__}: {exc}"
+    return f"{type(exc).__name__}: {exc}"
+
+
 def _classify_tool_error(exc: BaseException) -> str:
     """Map an exception to a categorical error_class for the dashboard.
 
@@ -622,12 +639,15 @@ class RuntimeEngine:
         except (BudgetExceeded, PermissionDenied) as exc:
             result = {"error": str(exc)}
             final_state = TaskState.FAILED
-            error = f"{type(exc).__name__}: {exc}"
+            # When the failure is a SparkError, persist the structured
+            # to_dict() payload so the Run Replay UI can render a
+            # FailureInspector. Plain prefix kept for legacy log filters.
+            error = _format_run_error(exc)
             log.warning("task.budget_or_permission", event_type=EventType.BUDGET_EXCEEDED, error=str(exc))
         except Exception as exc:  # pragma: no cover — defensive
             result = {"error": str(exc)}
             final_state = TaskState.FAILED
-            error = f"{type(exc).__name__}: {exc}"
+            error = _format_run_error(exc)
             log.error("task.unhandled", error=str(exc))
 
         state.result = result
@@ -1104,6 +1124,20 @@ class RuntimeEngine:
                 detail=spark_err.detail,
                 exception_type=type(exc).__name__,
             )
+            # Fan out to the gate-failure notification family. The
+            # helper is windowed per (agent, code, target) so a tight
+            # loop hits the bell once. Best-effort — failures here
+            # never escalate.
+            try:
+                from spark.errors.notify import notify_gate_failure  # noqa: PLC0415
+
+                await notify_gate_failure(
+                    spark_err,
+                    agent_name=getattr(state, "agent_name", None),
+                    run_id=getattr(state, "run_id", None),
+                )
+            except Exception:  # pragma: no cover — best-effort
+                pass
             state.trace.append(
                 {
                     "event": "tool_error",

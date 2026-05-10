@@ -33,6 +33,7 @@
 - [Security Center](Security-Center-Guide)
 - [Data-class guardrails](Data-Classification-Guardrails)
 - [Filtering page](Filtering-Page)
+- [Failure inspector](Failure-Inspector-Guide)
 - [Forensic review](Forensic-Review-Guide)
 - [Logging & tracing](Logging-And-Tracing)
 - [Secrets](Secrets-Guide)

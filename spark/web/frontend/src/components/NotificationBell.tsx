@@ -158,6 +158,14 @@ function NotificationRow({
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
+            {notification.kind.startsWith("gate_") && (
+              <span
+                className="chip chip-warn text-[10px]"
+                title="Gate refused an operation. Click the title to tune."
+              >
+                Gate
+              </span>
+            )}
             <span className="text-xs uppercase tracking-wide text-spark-muted">
               {notification.kind.replace(/_/g, " ")}
             </span>

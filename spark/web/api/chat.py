@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from sqlalchemy import select
 
 from spark.config.enums import DataScope
-from spark.errors.codes import SparkError
+from spark.errors.codes import ErrorCode, SparkError
 from spark.logging import get_logger
 from spark.memory.session_memory import SessionEntry, SessionMemory
 from spark.persistence.db import session_scope
@@ -334,6 +334,11 @@ async def chat_socket(ws: WebSocket, session_id: str) -> None:
                 )
                 safe_content = ui_outcome.text
             except SparkError as exc:
+                # Send the structured error payload so the chat frontend
+                # can render the FailureInspector. The legacy ``content``
+                # field stays for backwards-compat: older clients keep
+                # showing a thin error message; new clients see the
+                # `error` dict and render the inspector.
                 await ws.send_json(
                     {
                         "kind": "error",
@@ -343,6 +348,7 @@ async def chat_socket(ws: WebSocket, session_id: str) -> None:
                             "grant or lower the class level in "
                             "Security Center → Data Classes."
                         ),
+                        "error": exc.to_dict(),
                     }
                 )
                 continue
@@ -1156,21 +1162,22 @@ async def _run_chat_tool_loop(
         except Exception as exc:
             error_class = _classify_tool_error(exc)
             if isinstance(exc, SparkError):
-                payload = {"error": exc.to_dict()}
+                spark_err = exc
             else:
-                payload = {
-                    "error": {
-                        "code": "PLUGIN_RAISED",
-                        "message": str(exc) or type(exc).__name__,
-                        "detail": {"plugin": plugin_name},
-                    }
-                }
+                spark_err = SparkError(
+                    code=ErrorCode.PLUGIN_RAISED,
+                    message=str(exc) or type(exc).__name__,
+                    detail={"plugin": plugin_name},
+                )
+            structured = spark_err.to_dict()
+            payload = {"error": structured}
             body = json.dumps(payload, default=str)
             is_error = True
             log.warning(
                 "chat.tool_error",
                 plugin=plugin_name,
                 error_class=error_class,
+                error_code=spark_err.code.value,
                 error=str(exc),
             )
             if broker is not None:
@@ -1182,10 +1189,22 @@ async def _run_chat_tool_loop(
                             "tool_call_id": tool_call_id,
                             "error": str(exc),
                             "error_class": error_class,
+                            # Full SparkError payload so the chat frontend
+                            # can render the FailureInspector beneath the
+                            # thin ``✗ plugin: ...`` line.
+                            "error_payload": structured,
                             "is_error": True,
                         },
                     )
                 )
+            try:
+                from spark.errors.notify import notify_gate_failure  # noqa: PLC0415
+
+                await notify_gate_failure(
+                    spark_err, agent_name=agent_name, run_id=None
+                )
+            except Exception:  # pragma: no cover — best-effort
+                pass
 
         messages.append(
             _make_tool_result_message(

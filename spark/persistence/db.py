@@ -142,6 +142,12 @@ def _apply_additive_migrations(sync_conn: Any) -> None:
     pref_columns = [
         ("data_class_blocked", "INTEGER NOT NULL DEFAULT 1"),
         ("data_class_grant_expiring", "INTEGER NOT NULL DEFAULT 1"),
+        # Gate-family notification kinds (failure-mode surface).
+        ("gate_permission_denied", "INTEGER NOT NULL DEFAULT 1"),
+        ("gate_budget_exceeded", "INTEGER NOT NULL DEFAULT 1"),
+        ("gate_network_denied", "INTEGER NOT NULL DEFAULT 1"),
+        ("gate_filesystem_denied", "INTEGER NOT NULL DEFAULT 1"),
+        ("gate_sandbox_failed", "INTEGER NOT NULL DEFAULT 1"),
     ]
     try:
         existing = {

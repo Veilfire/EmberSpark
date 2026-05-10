@@ -16,9 +16,8 @@ that previously hid behind code edits or a flat policy table:
 
 Configuration of data-class levels, scopes, mask styles, and
 per-detector toggles previously lived under
-**Security Center → Data Classes**. That tab now redirects here.
-Per-agent overrides and time-bound grants stay on Security Center for
-now.
+**Security Center → Data Classes**. That tab was removed; every knob
+— including time-bound grants — now lives on this page.
 
 ---
 
@@ -26,8 +25,14 @@ now.
 
 ### Header
 
-The right-hand toolbar holds three actions:
+The right-hand toolbar holds four actions:
 
+- **Grants** — opens the time-bounded carve-outs drawer. Lists every
+  active `DataClassGrant`, their TTL, and a Revoke control; the **+ New
+  grant** form takes a typed-confirm step (must retype the agent name)
+  before it can submit. Audited at `critical` severity. Failure-Inspector
+  deep-links from a `DATA_CLASS_BLOCKED` error open this drawer
+  pre-filled with the matching class + agent + scope.
 - **Dry-run** — opens the sandbox modal at the bottom of this page.
 - **Discard** (visible only with unsaved changes) — drops every pending
   edit without writing.
@@ -284,15 +289,23 @@ the catalog — the page only renders entries that exist there.
 
 ## Migration from `Security Center → Data Classes`
 
-The data-class tab inside Security Center was a flat per-class table
-with no mask style, no per-detector control, and no dry-run. It now
-renders a one-paragraph notice that points at the Filtering page. The
-tab will be removed entirely in the next release; book-marks should
-move to `/filtering`.
+The Data Classes tab in Security Center is **removed**. Every knob
+that used to live there now lives on the Filtering page:
+
+- Levels, scopes, mask styles, min-confidence, consensus, per-detector
+  toggles → category cards
+- **Grants** → header **Grants** button (drawer with list + new-grant
+  form + revoke)
+- Per-agent overrides → opening to per-card overrides on the same page
+
+Bookmarks pointing at `/security?tab=data-classes` should move to
+`/filtering`.
 
 The underlying tables are unchanged — `data_class_policies` gained
-four nullable columns via additive migration, no rewrites of existing
-rows.
+four nullable columns via additive migration, and `data_class_grants`
+is unchanged. The Failure Inspector's `DATA_CLASS_BLOCKED` deep-links
+now route exclusively to `/filtering` (lower-the-level option) or
+`/filtering` with the Grants drawer pre-filled (carve-out option).
 
 ---
 

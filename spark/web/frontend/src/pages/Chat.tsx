@@ -18,6 +18,12 @@ import { RelativeTime } from "../components/RelativeTime";
 import { EmptyState } from "../components/primitives";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Modal } from "../components/Modal";
+import {
+  FailureInspector,
+  SparkErrorView,
+  WhyToggle,
+  isSparkError,
+} from "../components/FailureInspector";
 
 interface Citation {
   memory_id: string;
@@ -32,6 +38,13 @@ interface ChatMessage {
   kind: "user" | "assistant" | "system" | "tool";
   content: string;
   citations?: Citation[];
+  /**
+   * Structured `SparkError.to_dict()` payload, when this message
+   * represents a gate failure. Renders an inline FailureInspector
+   * beneath the thin error line. Absent for normal turns + non-gate
+   * errors.
+   */
+  errorPayload?: SparkErrorView;
 }
 
 type SessionSummary = {
@@ -256,6 +269,13 @@ export default function Chat() {
                 const c = data.data?.content;
                 return typeof c === "string" ? c : JSON.stringify(c);
               })();
+          // The backend now ships `error_payload` carrying the full
+          // SparkError.to_dict() shape. Stash it on the message so the
+          // FailureInspector can render beneath the thin error line.
+          const errorPayload =
+            isErr && isSparkError(data.data?.error_payload)
+              ? (data.data.error_payload as SparkErrorView)
+              : undefined;
           setMessages((m) => [
             ...m,
             {
@@ -265,12 +285,23 @@ export default function Chat() {
                   ? body.slice(0, 240) + "…"
                   : body
               }`,
+              errorPayload,
             },
           ]);
         } else if (data.kind === "error") {
+          // Input guardrail block + similar one-shot errors. Backend
+          // sends `error: SparkError.to_dict()` alongside the legacy
+          // `content` string.
+          const errorPayload = isSparkError(data.error)
+            ? (data.error as SparkErrorView)
+            : undefined;
           setMessages((m) => [
             ...m,
-            { kind: "system", content: `error: ${data.content}` },
+            {
+              kind: "system",
+              content: `error: ${data.content}`,
+              errorPayload,
+            },
           ]);
           setStreaming(false);
         }
@@ -795,13 +826,33 @@ function MessageBubble({ message: m }: { message: ChatMessage }) {
 
   if (m.kind === "tool") {
     return (
-      <pre className="text-xs font-mono text-spark-accent bg-spark-bg border border-spark-border rounded p-2 overflow-x-auto whitespace-pre-wrap max-w-[90%]">
-        {m.content}
-      </pre>
+      <div className="max-w-[90%] space-y-1.5">
+        <pre className="text-xs font-mono text-spark-accent bg-spark-bg border border-spark-border rounded p-2 overflow-x-auto whitespace-pre-wrap">
+          {m.content}
+        </pre>
+        {m.errorPayload && <ChatFailurePanel error={m.errorPayload} />}
+      </div>
     );
   }
 
-  return <div className="text-spark-danger text-xs">{m.content}</div>;
+  // Fallback: system messages and unknown kinds. Render thin error
+  // line + the FailureInspector if a structured payload was attached.
+  return (
+    <div className="max-w-[90%] space-y-1.5">
+      <div className="text-spark-danger text-xs">{m.content}</div>
+      {m.errorPayload && <ChatFailurePanel error={m.errorPayload} />}
+    </div>
+  );
+}
+
+function ChatFailurePanel({ error }: { error: SparkErrorView }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <WhyToggle open={open} onClick={() => setOpen((o) => !o)} />
+      {open && <FailureInspector error={error} variant="inline" />}
+    </div>
+  );
 }
 
 function CitationsFooter({ citations }: { citations: Citation[] }) {

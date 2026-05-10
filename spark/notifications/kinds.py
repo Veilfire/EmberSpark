@@ -25,3 +25,11 @@ class NotificationKind(str, Enum):
     MEMORY_REVIEW_NEEDED = "memory_review_needed"
     DATA_CLASS_BLOCKED = "data_class_blocked"
     DATA_CLASS_GRANT_EXPIRING = "data_class_grant_expiring"
+    # Gate-failure family — fire when a SparkError refuses an operation.
+    # One kind per gate family (not per code) so the bell stays sane;
+    # the catalogue + Inspector explain WHICH specific code fired.
+    GATE_PERMISSION_DENIED = "gate_permission_denied"
+    GATE_BUDGET_EXCEEDED = "gate_budget_exceeded"
+    GATE_NETWORK_DENIED = "gate_network_denied"
+    GATE_FILESYSTEM_DENIED = "gate_filesystem_denied"
+    GATE_SANDBOX_FAILED = "gate_sandbox_failed"

@@ -13,7 +13,6 @@ type Section =
   | "sandbox"
   | "plugins"
   | "privacy"
-  | "data-classes"
   | "secrets"
   | "trusted-docs";
 
@@ -37,7 +36,6 @@ export default function SecurityCenter() {
           ["sandbox", "Sandbox"],
           ["plugins", "Plugins"],
           ["privacy", "Privacy"],
-          ["data-classes", "Data Classes"],
           ["secrets", "Secrets"],
           ["trusted-docs", "Trusted Docs"],
         ].map(([key, label]) => (
@@ -57,7 +55,6 @@ export default function SecurityCenter() {
       {section === "sandbox" && <SandboxPanel />}
       {section === "plugins" && <PluginsPanel />}
       {section === "privacy" && <PrivacyPanel />}
-      {section === "data-classes" && <DataClassesPanel />}
       {section === "secrets" && <SecretsPanel />}
       {section === "trusted-docs" && <TrustedDocsPanel />}
     </div>
@@ -742,34 +739,7 @@ function TrustedDocsPanel() {
 }
 
 
-// -----------------------------------------------------------------------------
-// Data Classes panel — redirect to /filtering (kept one release for muscle-memory)
-// -----------------------------------------------------------------------------
-
-function DataClassesPanel() {
-  // Configuration of data-class levels, scopes, mask styles, and
-  // per-detector toggles moved to the dedicated Filtering page under
-  // SECURE → Filtering. This tab remains for one release as a redirect
-  // so links / muscle-memory don't 404 on operators upgrading from
-  // 0.x; remove in a follow-up once everyone has the new sidebar.
-  return (
-    <div className="panel p-6 max-w-2xl">
-      <h3 className="font-semibold text-base mb-2">
-        Moved → SECURE → Filtering
-      </h3>
-      <p className="text-sm text-spark-muted mb-4">
-        Data-class levels, scopes, redaction mask styles, per-detector
-        toggles, and the dry-run sandbox now live on the dedicated{" "}
-        <a href="/filtering" className="text-spark-accent hover:underline">
-          Filtering
-        </a>{" "}
-        page. Per-agent overrides and time-bound grants stay on this
-        Security Center for now.
-      </p>
-      <a href="/filtering" className="btn btn-primary text-sm inline-flex">
-        Open Filtering
-      </a>
-    </div>
-  );
-}
-
+// Data Classes lived here in a previous release — every knob has
+// moved to the dedicated /filtering page (category cards, mask styles,
+// per-detector toggles, dry-run, AND grants). This tab + panel were
+// removed in the failure-inspector wave.

@@ -29,28 +29,15 @@ Earlier versions of EmberSpark exposed `g` + letter chords (e.g. `g c` for Chat,
 
 The command palette covers every page:
 
-- Overview
-- Provider
-- Agents
-- Chat
-- Runs
-- Persona
-- Plugins
-- Scheduler
-- Templates
-- Cost & Budgets
-- Memory
-- Downloads
-- Skills
-- Stats
-- Security Center
-- Secrets
-- Guardrails
-- Filtering
-- Forensic
-- Audit Log
-- Ops
-- Settings
+Pages match the sidebar's four-section layout:
+
+**RUN** — Overview, Agents, Chat, Runs, Scheduler, Templates
+
+**OBSERVE** — Cost, Memory, Skills, Stats, Downloads
+
+**SECURE** — Security Center, Secrets, Guardrails, Filtering, Forensic, Audit Log
+
+**SYSTEM** — Provider, Persona, Plugins, Ops, Settings
 
 Fuzzy matching is substring-based on both the page label and a short hint, so typing `audit` finds Audit Log, typing `scheduling` finds Scheduler, typing `guard` finds Guardrails.
 

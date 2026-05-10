@@ -21,25 +21,38 @@ If you lose the credentials, run `spark serve --rotate-credentials` and a new pa
 
 ## The sidebar
 
+The sidebar groups pages into four sections, top-to-bottom:
+
 ```
-Overview           (bell)
-Chat
-Runs
-Persona
-Plugins
-Scheduler
-Cost & Budgets
-Memory
-Downloads
-Skills
-Stats
-Security Center
-Guardrails
-Filtering
-Forensic
-Audit Log
-Ops
-Settings
+RUN
+  Overview            (bell in the top bar)
+  Agents
+  Chat
+  Runs
+  Scheduler
+  Templates
+
+OBSERVE
+  Cost
+  Memory
+  Skills
+  Stats
+  Downloads
+
+SECURE
+  Security            (Security Center)
+  Secrets
+  Guardrails
+  Filtering
+  Forensic
+  Audit
+
+SYSTEM
+  Provider
+  Persona
+  Plugins
+  Ops
+  Settings
 ```
 
 The **bell** in the top bar aggregates every HITL signal into one surface
@@ -77,6 +90,7 @@ Conversational session-based UI. Pick an agent, click **Start session**, type a 
 - Long-term memory (when enabled for the agent) is retrieved per turn and injected as "Known context" in the system prompt
 - A **capability preamble** is prepended to the system prompt so the model knows it has persistent memory, session memory, and (if enabled) cross-agent shared memory — without this, models trained as stateless chatbots confidently deny the capability
 - **Plugin tools** — when the agent's `plugins.allow` lists any plugins, they're bound to the chat model the same way they are for task runs. Tool calls fire real plugins through the sandbox; the chat surface shows a `→ plugin(args)` line when the agent invokes a tool and a `← plugin: result` line when it returns (or `✗` on error). Default chat-turn caps: 8 tool calls / 12 model rounds / 12 iterations, reset every user turn. Empty allowlist → pure-text chat (no tools).
+- **Why? on errors** — every `✗ plugin: ...` line is followed by a small **Why?** toggle. Click to expand the [Failure Inspector](Failure-Inspector-Guide): which gate fired, what element triggered it, ranked tuning options with risk statements, and a deep-link to the page that fixes it. Same panel renders for input-guardrail blocks ("Message refused by data-class guardrail").
 - **Operator-config visibility** — the same per-plugin `allow_paths` / `allow_hosts` / `rules` you saved in the Plugins page are rendered into the chat's system prompt under "Operator config (effective for this run)". The agent picks valid arguments on the first call instead of guessing.
 - **Cost telemetry** — every chat turn writes a `model_call_events` row plus a `cost_events` aggregate keyed by a synthetic `chat-{turn_id}-…` run id, so chat spend lands in the Cost dashboard alongside task runs. OpenRouter rows go through the same deferred-enrichment flip from `computed` to `reported` USD.
 - **Citations footer** under each assistant message surfaces the memory ids that were retrieved for that turn; click a citation to open the full memory
@@ -242,13 +256,13 @@ One agent (EmberSpark is single-agent). Refreshes on page load.
 
 ### Security Center
 
-The multi-tab policy editor (Global Posture / Network / Filesystem / Sandbox / Plugins / Privacy / Data Classes / Secrets / Trusted Docs). The **Data Classes** tab now redirects to the [Filtering page](Filtering-Page); per-agent overrides and unlimited grants live here for now. See the dedicated [Security Center Guide](Security-Center-Guide).
+The multi-tab policy editor: Global Posture / Network / Filesystem / Sandbox / Plugins / Privacy / Secrets / Trusted Docs. The **Data Classes** tab was removed — every knob (levels, scopes, mask styles, per-detector toggles, grants, dry-run) lives on the dedicated [Filtering page](Filtering-Page). See the [Security Center Guide](Security-Center-Guide).
 
 ### Guardrails
 
-Last 24h aggregation of critical / elevated / info audit events, broken out by category (permission denied, sandbox denied, budget exceeded, plugin hash changed, internal grants, raw logging, skill rejected/approved). Clickable into the audit log with pre-filtered queries.
+Last 24h aggregation of critical / elevated / info audit events, broken out by category (permission denied, sandbox denied, budget exceeded, plugin hash changed, internal grants, raw logging, skill rejected/approved). Each category click lands on `/audit?kind=…` with the filter pre-applied, and the chevron expands a **Top-N offenders** mini-table (top actors and top targets) so you can see *which* agent / path / host is generating the noise without scrolling the audit log.
 
-Use this as your daily smoke test — if anything unexpected is in the critical count, investigate.
+Use this as your daily smoke test — if anything unexpected is in the critical count, investigate. From any audit row, click the row's chevron to inspect the structured payload via the [Failure Inspector](Failure-Inspector-Guide).
 
 ### Filtering
 
@@ -275,8 +289,9 @@ Encrypted per-run capture of every prompt / model output / tool call / memory ev
 
 Every security-relevant mutation, with filters:
 
-- **Kind** — substring match
+- **Kind** — substring match (also reads from `?kind=…` so deep-links from Guardrails / NotificationBell hydrate the filter)
 - **Severity** — info / elevated / critical
+- Each row has a **chevron** column — click to expand. When the audit `diff` carries a `SparkError` shape (most gate failures), the row renders an inline [Failure Inspector](Failure-Inspector-Guide) with element details + tuning options. Otherwise it falls back to a pretty-printed JSON view of the diff.
 
 Each row shows the timestamp, actor (operator subject), kind, target, severity chip, and the diff or reason.
 

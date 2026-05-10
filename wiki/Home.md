@@ -74,6 +74,7 @@ Then read these in order:
 - **[Security Center Guide](Security-Center-Guide)** — the tabs of the Security Center, what they do, when to use them
 - **[Data Classification Guardrails](Data-Classification-Guardrails)** — per-class allow / warn / redact / shadow_block / block with explicit unlimited grants
 - **[Filtering page](Filtering-Page)** — operator surface for the guardrail engine: per-category mask styles (`****-1234`, `J. D.`, `[#hash]`), per-detector enable/disable, paste-and-test dry-run sandbox
+- **[Failure Inspector](Failure-Inspector-Guide)** — when a gate refuses an operation, see the matched element, ranked tuning options with risk statements, and a deep-link to the page that fixes it
 - **[Secrets Guide](Secrets-Guide)** — the age-encrypted vault, env fallback, passphrase wrap
 - **[Deployment Guide](Deployment-Guide)** — loopback / LAN / public bind modes
 - **[Daemon Modes](Daemon-Modes)** — naked venv, Docker, Firecracker microVM

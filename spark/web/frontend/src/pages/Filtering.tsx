@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   FlaskConical,
+  KeyRound,
   Save,
   RotateCcw,
   Settings2,
@@ -16,6 +17,7 @@ import {
   MaskStyleValue,
 } from "../components/MaskStyleSelector";
 import { Modal } from "../components/Modal";
+import { useSuggestedPrefill } from "../lib/prefill";
 
 // ---------------------------------------------------------------------------
 // Types — mirror /api/filtering/policy
@@ -148,6 +150,46 @@ function PolicyEditor({
   const [pending, setPending] = useState<Record<string, PendingEdit>>({});
   const [drawerOpenFor, setDrawerOpenFor] = useState<string | null>(null);
   const [dryRunOpen, setDryRunOpen] = useState(false);
+  const [grantsOpen, setGrantsOpen] = useState(false);
+
+  // Failure-Inspector deep-links land here. Two kinds:
+  //   data_class_level → highlight + flash the matching category card
+  //     and pre-stage a `level: redact` edit so the operator just hits Save.
+  //   data_class_grant → open the Grants drawer pre-filled with class
+  //     + agent + scope.
+  const [levelPrefill, discardLevelPrefill] =
+    useSuggestedPrefill("data_class_level");
+  const [grantPrefill] = useSuggestedPrefill("data_class_grant");
+  const flashedCardRef = useRef<HTMLDivElement | null>(null);
+
+  // Open the Grants drawer when the URL carried a grant prefill.
+  useEffect(() => {
+    if (grantPrefill && !grantsOpen) setGrantsOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grantPrefill]);
+
+  // Stage a level edit when the URL carried a category-level prefill.
+  useEffect(() => {
+    if (!levelPrefill) return;
+    setPending((p) => ({
+      ...p,
+      [levelPrefill.data_class]: {
+        ...(p[levelPrefill.data_class] || {}),
+        level: levelPrefill.level as Level,
+        reason: "Suggested by failure inspector",
+      },
+    }));
+    // Scroll the matching card into view; flash effect comes from
+    // CategoryCard noticing levelPrefill via its own props.
+    const t = setTimeout(() => {
+      flashedCardRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 50);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [levelPrefill?.data_class, levelPrefill?.level]);
 
   const setEdit = (dataClass: string, patch: PendingEdit) => {
     setPending((p) => ({
@@ -217,6 +259,13 @@ function PolicyEditor({
         <div className="flex items-center gap-2">
           <button
             className="btn btn-ghost text-sm"
+            onClick={() => setGrantsOpen(true)}
+          >
+            <KeyRound size={14} className="mr-1.5 inline" />
+            Grants
+          </button>
+          <button
+            className="btn btn-ghost text-sm"
             onClick={() => setDryRunOpen(true)}
           >
             <FlaskConical size={14} className="mr-1.5 inline" />
@@ -246,6 +295,27 @@ function PolicyEditor({
         </div>
       </header>
 
+      {levelPrefill && (
+        <div className="panel p-3 border-amber-400/60 bg-amber-400/5 flex items-start gap-3">
+          <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm">
+            <strong>Suggested by failure inspector.</strong>{" "}
+            <code className="font-mono text-xs">{levelPrefill.data_class}</code>{" "}
+            staged at <code className="font-mono text-xs">{levelPrefill.level}</code>.
+            Review the highlighted card and click Save when ready.
+          </div>
+          <button
+            className="btn btn-ghost text-xs"
+            onClick={() => {
+              discardLevelPrefill();
+              discardEdit(levelPrefill.data_class);
+            }}
+          >
+            Discard suggestion
+          </button>
+        </div>
+      )}
+
       {data.families.map((fam) => {
         const cats = data.categories.filter(
           (c) => c.family === fam.id,
@@ -258,17 +328,30 @@ function PolicyEditor({
               {fam.label}
             </h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {cats.map((cat) => (
-                <CategoryCard
-                  key={cat.data_class}
-                  cat={cat}
-                  pending={pending[cat.data_class] || null}
-                  maskStyles={data.mask_styles}
-                  onChange={(patch) => setEdit(cat.data_class, patch)}
-                  onDiscard={() => discardEdit(cat.data_class)}
-                  onAdvanced={() => setDrawerOpenFor(cat.data_class)}
-                />
-              ))}
+              {cats.map((cat) => {
+                const isFlashed =
+                  levelPrefill?.data_class === cat.data_class;
+                return (
+                  <div
+                    key={cat.data_class}
+                    ref={isFlashed ? flashedCardRef : undefined}
+                    className={
+                      isFlashed
+                        ? "ring-2 ring-amber-400/70 rounded-lg transition"
+                        : ""
+                    }
+                  >
+                    <CategoryCard
+                      cat={cat}
+                      pending={pending[cat.data_class] || null}
+                      maskStyles={data.mask_styles}
+                      onChange={(patch) => setEdit(cat.data_class, patch)}
+                      onDiscard={() => discardEdit(cat.data_class)}
+                      onAdvanced={() => setDrawerOpenFor(cat.data_class)}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </section>
         );
@@ -286,6 +369,22 @@ function PolicyEditor({
         <DryRunSandbox
           categories={data.categories}
           onClose={() => setDryRunOpen(false)}
+        />
+      )}
+
+      {grantsOpen && (
+        <GrantsDrawer
+          onClose={() => setGrantsOpen(false)}
+          prefill={
+            grantPrefill
+              ? {
+                  data_class: grantPrefill.data_class,
+                  agent: grantPrefill.agent,
+                  scope: grantPrefill.scope ?? null,
+                }
+              : null
+          }
+          knownClasses={data.categories.map((c) => c.data_class)}
         />
       )}
     </div>
@@ -816,6 +915,314 @@ function DryRunSandbox({
               </div>
             </div>
           )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Grants drawer — manage time-bounded data-class grants from /filtering.
+// ---------------------------------------------------------------------------
+
+interface GrantView {
+  id: number;
+  agent_name: string;
+  data_class: string;
+  scopes: string[];
+  level_override: string;
+  reason: string;
+  granted_by: string;
+  granted_at: string;
+  expires_at: string | null;
+  active: boolean;
+}
+
+interface GrantPrefill {
+  data_class: string;
+  agent: string;
+  scope: string | null;
+}
+
+function GrantsDrawer({
+  onClose,
+  prefill,
+  knownClasses,
+}: {
+  onClose: () => void;
+  prefill: GrantPrefill | null;
+  knownClasses: string[];
+}) {
+  const qc = useQueryClient();
+  const grants = useQuery<GrantView[]>({
+    queryKey: ["filtering", "grants"],
+    queryFn: () => api.get("/api/security/data-grants"),
+  });
+
+  // Form state — pre-populated from the inspector deep-link when present.
+  const [showForm, setShowForm] = useState(prefill !== null);
+  const [agentName, setAgentName] = useState(prefill?.agent ?? "");
+  const [dataClass, setDataClass] = useState(prefill?.data_class ?? "");
+  const [scopes, setScopes] = useState<Scope[]>(
+    prefill?.scope ? [prefill.scope as Scope] : ["tool_output"],
+  );
+  const [reason, setReason] = useState(
+    prefill ? "Suggested by failure inspector" : "",
+  );
+  const [ttlHours, setTtlHours] = useState<number>(168);
+  const [confirmName, setConfirmName] = useState("");
+
+  const create = useMutation({
+    mutationFn: () =>
+      api.post("/api/security/data-grants", {
+        agent_name: agentName,
+        data_class: dataClass,
+        scopes,
+        level_override: "allow",
+        reason,
+        ttl_hours: ttlHours,
+        confirm_agent_name: confirmName,
+      }),
+    onSuccess: () => {
+      toast.success(`Granted ${dataClass} to ${agentName}`);
+      qc.invalidateQueries({ queryKey: ["filtering", "grants"] });
+      // Clear the form + suggestion banner.
+      setShowForm(false);
+      setConfirmName("");
+      setReason("");
+    },
+    onError: (e: Error) => toast.error(`Grant failed: ${e.message}`),
+  });
+
+  const revoke = useMutation({
+    mutationFn: (id: number) => api.del(`/api/security/data-grants/${id}`),
+    onSuccess: () => {
+      toast.success("Grant revoked");
+      qc.invalidateQueries({ queryKey: ["filtering", "grants"] });
+    },
+    onError: (e: Error) => toast.error(`Revoke failed: ${e.message}`),
+  });
+
+  const canSubmit =
+    agentName.trim().length > 0 &&
+    dataClass.trim().length > 0 &&
+    scopes.length > 0 &&
+    reason.trim().length > 0 &&
+    confirmName.trim() === agentName.trim() &&
+    !create.isPending;
+
+  return (
+    <Modal open onClose={onClose}>
+      <div className="panel w-[760px] max-w-full max-h-[85vh] overflow-hidden flex flex-col">
+        <div className="p-4 border-b border-spark-border flex items-start justify-between">
+          <div>
+            <div className="text-xs text-spark-muted uppercase tracking-wide flex items-center gap-1.5">
+              <KeyRound size={12} /> Data-class grants
+            </div>
+            <h3 className="text-lg font-semibold mt-0.5">
+              Time-bounded carve-outs
+            </h3>
+            <p className="text-xs text-spark-muted mt-1 max-w-2xl">
+              A grant lets one agent handle a normally-blocked data class
+              for a bounded TTL. Audited at <em>critical</em> severity.
+              Per-agent overrides on the Filtering categories don't
+              require a grant — those are policy edits; this is for
+              carve-outs that bypass the policy entirely.
+            </p>
+          </div>
+          <button className="btn btn-ghost text-sm" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-4 space-y-4">
+          {prefill && showForm && (
+            <div className="panel p-3 border-amber-400/60 bg-amber-400/5 text-sm">
+              <strong>Suggested by failure inspector.</strong> Form
+              pre-filled with{" "}
+              <code className="font-mono text-xs">{prefill.data_class}</code> /{" "}
+              <code className="font-mono text-xs">{prefill.agent}</code>
+              {prefill.scope && (
+                <>
+                  {" "}/ <code className="font-mono text-xs">{prefill.scope}</code>
+                </>
+              )}
+              . Type the agent name in the confirm field below to enable Grant.
+            </div>
+          )}
+
+          {!showForm && (
+            <button
+              className="btn btn-primary text-sm"
+              onClick={() => setShowForm(true)}
+            >
+              + New grant
+            </button>
+          )}
+
+          {showForm && (
+            <div className="panel p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label block mb-1">Agent</label>
+                  <input
+                    className="input w-full text-sm"
+                    placeholder="my-agent"
+                    value={agentName}
+                    onChange={(e) => setAgentName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="label block mb-1">Data class</label>
+                  <select
+                    className="input w-full text-sm"
+                    value={dataClass}
+                    onChange={(e) => setDataClass(e.target.value)}
+                  >
+                    <option value="">— pick a class —</option>
+                    {knownClasses.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="label block mb-1.5">Scopes</label>
+                <div className="flex flex-wrap gap-2">
+                  {ALL_SCOPES.map((s) => {
+                    const active = scopes.includes(s);
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() =>
+                          setScopes(
+                            active ? scopes.filter((x) => x !== s) : [...scopes, s],
+                          )
+                        }
+                        className={`chip text-[11px] ${active ? "chip-info" : ""}`}
+                      >
+                        {s}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label block mb-1">TTL (hours)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={720}
+                    className="input w-full text-sm"
+                    value={ttlHours}
+                    onChange={(e) =>
+                      setTtlHours(Math.max(1, parseInt(e.target.value, 10) || 1))
+                    }
+                  />
+                  <p className="text-[10px] text-spark-muted mt-1">
+                    Default 168 (7 days). Max 720 (30 days). Pair with the
+                    shortest plausible TTL.
+                  </p>
+                </div>
+                <div>
+                  <label className="label block mb-1">
+                    Confirm agent name
+                  </label>
+                  <input
+                    className="input w-full text-sm font-mono"
+                    placeholder={agentName || "(type agent name)"}
+                    value={confirmName}
+                    onChange={(e) => setConfirmName(e.target.value)}
+                  />
+                  {confirmName && confirmName !== agentName && (
+                    <p className="text-[10px] text-spark-danger mt-1">
+                      Doesn't match — typed-confirm gate
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="label block mb-1">Reason</label>
+                <textarea
+                  className="input w-full text-sm"
+                  rows={2}
+                  placeholder="Why does this agent need this carve-out?"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  className="btn btn-ghost text-sm"
+                  onClick={() => setShowForm(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary text-sm"
+                  disabled={!canSubmit}
+                  onClick={() => create.mutate()}
+                >
+                  {create.isPending ? "Granting…" : "Grant"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="label mb-2">Active grants</div>
+            {grants.isLoading ? (
+              <p className="text-sm text-spark-muted">Loading…</p>
+            ) : !grants.data || grants.data.length === 0 ? (
+              <p className="text-sm text-spark-muted">
+                No active grants. Carve-outs you create here appear in this
+                list with their TTL and revoke control.
+              </p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead className="text-spark-muted">
+                  <tr>
+                    <th className="text-left py-1.5 pr-3">Agent</th>
+                    <th className="text-left py-1.5 pr-3">Class</th>
+                    <th className="text-left py-1.5 pr-3">Scopes</th>
+                    <th className="text-left py-1.5 pr-3">Expires</th>
+                    <th className="text-right py-1.5"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-spark-border">
+                  {grants.data.map((g) => (
+                    <tr key={g.id}>
+                      <td className="py-1.5 pr-3 font-mono">{g.agent_name}</td>
+                      <td className="py-1.5 pr-3 font-mono">{g.data_class}</td>
+                      <td className="py-1.5 pr-3 text-spark-muted">
+                        {g.scopes.join(", ")}
+                      </td>
+                      <td className="py-1.5 pr-3 text-spark-muted">
+                        {g.expires_at ?? "permanent"}
+                      </td>
+                      <td className="py-1.5 text-right">
+                        <button
+                          className="btn-ghost text-xs text-spark-danger"
+                          onClick={() => revoke.mutate(g.id)}
+                          disabled={revoke.isPending}
+                        >
+                          Revoke
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
     </Modal>
