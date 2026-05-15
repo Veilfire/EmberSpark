@@ -66,8 +66,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HF_HUB_DOWNLOAD_TIMEOUT=120
 
 # bubblewrap for the OS sandbox (userns-unprivileged); curl for healthcheck.
+# rclone for the cloud_drive plugin — bundles Google Drive / OneDrive /
+# Proton Drive / Dropbox / S3 / etc. through one binary. Operator runs
+# `rclone config` inside the container (or mounts a pre-built config
+# file) to pair remotes; the plugin allowlists by remote name.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends bubblewrap curl ca-certificates tini \
+ && apt-get install -y --no-install-recommends bubblewrap curl ca-certificates tini rclone \
  && rm -rf /var/lib/apt/lists/*
 
 # Non-root user. Note: user namespaces in the container allow bwrap to work

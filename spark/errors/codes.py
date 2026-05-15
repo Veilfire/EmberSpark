@@ -69,6 +69,7 @@ class ErrorCode(str, Enum):
     PATH_SYMLINK_REFUSED = "SPK_E_PATH_SYMLINK_REFUSED"
     FILE_NOT_FOUND = "SPK_E_FILE_NOT_FOUND"
     FILE_TOO_LARGE = "SPK_E_FILE_TOO_LARGE"
+    FILE_TYPE_DENIED = "SPK_E_FILE_TYPE_DENIED"
 
     # ------------------------------------------------------------------
     # Secrets
@@ -126,6 +127,7 @@ _DEFAULT_REMEDIATION: dict[ErrorCode, str] = {
     ErrorCode.PATH_SYMLINK_REFUSED: "Symlinks are refused to prevent bind-mount escape.",
     ErrorCode.FILE_NOT_FOUND: "Check the path; the operator may not have created it yet.",
     ErrorCode.FILE_TOO_LARGE: "Raise `max_read_bytes` in the filesystem plugin config or read in chunks.",
+    ErrorCode.FILE_TYPE_DENIED: "Ask the operator to add this file extension to the plugin's `file_type_allowlist`.",
     ErrorCode.SECRET_NOT_FOUND: "Populate the secret via `spark secrets set <name>`.",
     ErrorCode.SECRET_PROVIDER_UNAVAILABLE: "Initialize the age vault via `spark secrets init-age-vault`.",
     ErrorCode.FROZEN: "The runtime is frozen by operator action — wait for unfreeze.",

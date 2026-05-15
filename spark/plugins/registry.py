@@ -98,6 +98,8 @@ def _validate_plugin_class(cls: type[ToolPlugin]) -> None:
 
 def default_registry() -> PluginRegistry:
     """Build a registry preloaded with the built-in plugins."""
+    from spark.plugins.builtins.calendar import CalendarPlugin
+    from spark.plugins.builtins.cloud_drive import CloudDrivePlugin
     from spark.plugins.builtins.csv_io import CsvIoPlugin
     from spark.plugins.builtins.datetime_tool import DatetimePlugin
     from spark.plugins.builtins.email_sender import EmailSenderPlugin
@@ -105,17 +107,22 @@ def default_registry() -> PluginRegistry:
     from spark.plugins.builtins.git import GitPlugin
     from spark.plugins.builtins.home_assistant import HomeAssistantPlugin
     from spark.plugins.builtins.http_client import HttpClientPlugin
+    from spark.plugins.builtins.imap_reader import ImapReaderPlugin
     from spark.plugins.builtins.http_tool import HttpToolPlugin
     from spark.plugins.builtins.image_gen import ImageGenPlugin
     from spark.plugins.builtins.json_query import JsonQueryPlugin
+    from spark.plugins.builtins.maps import MapsPlugin
     from spark.plugins.builtins.markdown_writer import MarkdownWriterPlugin
     from spark.plugins.builtins.pdf_reader import PdfReaderPlugin
     from spark.plugins.builtins.rss_reader import RssReaderPlugin
     from spark.plugins.builtins.shell import ShellPlugin
+    from spark.plugins.builtins.slack import SlackPlugin
     from spark.plugins.builtins.sqlite import SqlitePlugin
     from spark.plugins.builtins.telegram_messenger import TelegramMessengerPlugin
+    from spark.plugins.builtins.weather import WeatherPlugin
     from spark.plugins.builtins.web_search import WebSearchPlugin
     from spark.plugins.builtins.webhook import WebhookPlugin
+    from spark.plugins.builtins.wikipedia import WikipediaPlugin
 
     reg = PluginRegistry()
     for cls in (
@@ -142,6 +149,16 @@ def default_registry() -> PluginRegistry:
         TelegramMessengerPlugin,
         # Home automation
         HomeAssistantPlugin,
+        # Productivity wave
+        CalendarPlugin,
+        ImapReaderPlugin,
+        SlackPlugin,
+        # Knowledge + real-world data
+        WeatherPlugin,
+        WikipediaPlugin,
+        MapsPlugin,
+        # Cloud storage (rclone wrapper)
+        CloudDrivePlugin,
     ):
         reg.register_class(cls)
     # Also discover any entry-point plugins installed in the environment.

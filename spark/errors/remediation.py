@@ -165,6 +165,20 @@ def _opts_permission_missing(d: dict[str, Any]) -> list[TuningOption]:
     if plugin == "home_assistant":
         return _opts_home_assistant_permission(d)
 
+    # Generic allowlist-grant shape — used by every plugin that
+    # implements live introspection (calendar, imap_reader, slack,
+    # cloud_drive, …). Plugin emits:
+    #
+    #   detail = {
+    #     "plugin": "<plugin_name>",
+    #     "missing_allowlist_item": "<id>",        # the unallowed item
+    #     "field": "<config_field_name>",          # e.g. allowed_calendars
+    #     "missing_toggle": "<bool_field_name>",   # optional, e.g. read_only
+    #     "risk": "safe"|"elevated"|"danger",      # optional, drives chip
+    #   }
+    if plugin and (d.get("missing_allowlist_item") or d.get("missing_toggle")):
+        return _opts_plugin_allowlist_grant(d)
+
     out: list[TuningOption] = [
         TuningOption(
             label="Re-scope the task so this permission isn't needed",
@@ -206,6 +220,101 @@ def _opts_permission_missing(d: dict[str, Any]) -> list[TuningOption]:
                     "permissions": list(missing),
                 },
                 audit_kind="security.permissions.grant",
+            )
+        )
+    return out
+
+
+def _opts_plugin_allowlist_grant(d: dict[str, Any]) -> list[TuningOption]:
+    """Generic allowlist-refusal options for any plugin.
+
+    Plugins that ship a live-introspection editor emit one of two
+    shapes:
+
+    - ``missing_allowlist_item: "<id>"`` + ``field: "<config_field>"``
+      — operator should tick this item in the editor's checkbox grid.
+    - ``missing_toggle: "<field>"`` — operator should flip a boolean.
+
+    The catalogue routes both into the same deep-link target
+    (``/plugins?plugin=<name>&prefill=...``) carrying the new
+    ``plugin_allowlist_grant`` prefill kind. The plugin's custom
+    editor reads the prefill on mount and flashes / ticks / pre-flips
+    the matching control with an amber ring — exactly like the HA
+    flow, but parametric over plugin name + field name.
+
+    ``risk`` (``safe``/``elevated``/``danger``) in detail drives the
+    chip color. Danger items still gate behind the typed-confirm
+    modal inside the editor.
+    """
+    plugin = d.get("plugin") or "?"
+    risk = d.get("risk", "elevated")
+    out: list[TuningOption] = [
+        TuningOption(
+            label="Re-scope the task to avoid this surface",
+            description=(
+                "If the agent doesn't actually need this calendar / "
+                "mailbox / channel / remote, tighten the prompt or "
+                "hand the work to a different agent."
+            ),
+            risk="None — preserves the existing allowlist.",
+            severity="low",
+        )
+    ]
+    if d.get("missing_toggle"):
+        toggle = str(d["missing_toggle"])
+        prefill = {
+            "kind": "plugin_allowlist_grant",
+            "plugin": plugin,
+            "toggle": toggle,
+        }
+        out.append(
+            TuningOption(
+                label=f"Flip {toggle!r} on {plugin}",
+                description=(
+                    f"Lets the plugin perform the gated operation. "
+                    "Other allowlists still apply."
+                ),
+                risk=(
+                    f"Agent gains broader access through the {plugin} plugin. "
+                    "Pair with tight item-level allowlists."
+                ),
+                severity="high",
+                deep_link=_link("/plugins", prefill=prefill, plugin=plugin),
+                prefill=prefill,
+                audit_kind="security.plugin_config.update",
+            )
+        )
+        return out
+
+    item = d.get("missing_allowlist_item")
+    field = d.get("field")
+    if item and field:
+        sev: Severity = (
+            "critical" if risk == "danger" else "high" if risk == "elevated" else "medium"
+        )
+        prefill = {
+            "kind": "plugin_allowlist_grant",
+            "plugin": plugin,
+            "add_item": str(item),
+            "field": str(field),
+        }
+        out.append(
+            TuningOption(
+                label=f"Allow `{item}` on {plugin}",
+                description=(
+                    f"Adds {str(item)!r} to the {plugin} plugin's "
+                    f"`{field}` allowlist. Other items stay refused. "
+                    "Danger items still require typed-confirm on the "
+                    "editor before they activate."
+                ),
+                risk=(
+                    f"Agent gains access to `{item}` through {plugin} "
+                    f"({risk}). The rest of the allowlist is unchanged."
+                ),
+                severity=sev,
+                deep_link=_link("/plugins", prefill=prefill, plugin=plugin),
+                prefill=prefill,
+                audit_kind="security.plugin_config.update",
             )
         )
     return out
@@ -590,6 +699,48 @@ def _opts_response_too_large(d: dict[str, Any]) -> list[TuningOption]:
 def _opts_path_denied(d: dict[str, Any]) -> list[TuningOption]:
     path = d.get("path") or _extract_path_from_message(d)
     agent = _agent(d)
+    plugin = d.get("plugin")
+    provider = d.get("provider")
+
+    # cloud_drive's PATH_DENIED carries provider + path, and the
+    # tuning surface lives inside that provider's card in the plugin
+    # editor — not in the Security Center filesystem tab.
+    if plugin == "cloud_drive" and provider and path:
+        suggested = _suggest_allow_root(path) if path else path
+        prefill = {
+            "kind": "plugin_allowlist_grant",
+            "plugin": "cloud_drive",
+            "field": "allowed_paths",
+            "provider": str(provider),
+            "add_item": str(suggested or path),
+        }
+        return [
+            TuningOption(
+                label="Re-scope the task to a path already allowed",
+                description=(
+                    "If the agent doesn't need this path, point it at one of "
+                    f"the existing allowed_paths on {provider!r}."
+                ),
+                risk="None — preserves the existing allowlist.",
+                severity="low",
+            ),
+            TuningOption(
+                label=f"Add `{suggested or path}` to {provider} allowed_paths",
+                description=(
+                    f"Lets the agent read/write under `{suggested or path}` on "
+                    f"the {provider!r} provider. Other paths stay refused."
+                ),
+                risk=(
+                    f"Agent gains access to everything under "
+                    f"`{suggested or path}` on {provider!r}."
+                ),
+                severity="high",
+                deep_link=_link("/plugins", prefill=prefill, plugin="cloud_drive"),
+                prefill=prefill,
+                audit_kind="security.plugin_config.update",
+            ),
+        ]
+
     out: list[TuningOption] = [
         TuningOption(
             label="Use a workspace-relative path",
@@ -709,6 +860,54 @@ def _opts_file_too_large(d: dict[str, Any]) -> list[TuningOption]:
             audit_kind="plugin.config.patch",
         ),
     ]
+    return out
+
+
+def _opts_file_type_denied(d: dict[str, Any]) -> list[TuningOption]:
+    """``cloud_drive.file_type_allowlist`` refusal.
+
+    The plugin emits ``{plugin, extension, field}``. Inspector
+    deep-links to the cloud_drive editor with the matching extension
+    flashed in the file-type bucket picker.
+    """
+    plugin = d.get("plugin") or "cloud_drive"
+    ext = str(d.get("extension") or "").lstrip(".")
+    out: list[TuningOption] = [
+        TuningOption(
+            label="Stage a file with an allowed extension",
+            description=(
+                "Convert the deliverable to one of the operator's allowed "
+                "types (pdf / txt / docx / xlsx / png / jpeg by default) "
+                "and retry."
+            ),
+            risk="None — preserves the file-type allowlist.",
+            severity="low",
+        )
+    ]
+    if ext:
+        prefill = {
+            "kind": "plugin_allowlist_grant",
+            "plugin": plugin,
+            "field": "file_type_allowlist",
+            "add_item": ext,
+        }
+        out.append(
+            TuningOption(
+                label=f"Add `.{ext}` to file_type_allowlist",
+                description=(
+                    f"Lets the plugin transfer `.{ext}` files. Other "
+                    "extensions stay refused."
+                ),
+                risk=(
+                    f"Files of type `.{ext}` can flow through {plugin}. "
+                    "Pair with tight `allowed_paths` for defense in depth."
+                ),
+                severity="medium",
+                deep_link=_link("/plugins", prefill=prefill, plugin=plugin),
+                prefill=prefill,
+                audit_kind="security.plugin_config.update",
+            )
+        )
     return out
 
 
@@ -1163,6 +1362,7 @@ _DISPATCH: dict[ErrorCode, Any] = {
     ErrorCode.PATH_SYMLINK_REFUSED: _opts_path_symlink_refused,
     ErrorCode.FILE_NOT_FOUND: _opts_file_not_found,
     ErrorCode.FILE_TOO_LARGE: _opts_file_too_large,
+    ErrorCode.FILE_TYPE_DENIED: _opts_file_type_denied,
     ErrorCode.SECRET_NOT_FOUND: _opts_secret_not_found,
     ErrorCode.SECRET_PROVIDER_UNAVAILABLE: _opts_secret_provider_unavailable,
     ErrorCode.FROZEN: _opts_frozen,

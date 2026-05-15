@@ -254,20 +254,32 @@ class ToolExecutor:
         for name in plugin_cls.required_secrets:
             secret_values[name] = self.secrets.get(name).get_secret_value()
 
-        for cfg_key, cfg_value in plugin_config.items():
-            if not cfg_key.endswith("_secret"):
-                continue
-            if not isinstance(cfg_value, str) or not cfg_value:
-                continue
-            if cfg_value in secret_values:
-                continue
-            try:
-                secret_values[cfg_value] = self.secrets.get(
-                    cfg_value
-                ).get_secret_value()
-            except SecretNotFound:
-                # Plugin's execute() will surface a typed error.
-                continue
+        # Walk the config recursively for ``*_secret`` field references.
+        # The flat case (``plugin.api_key_secret = "foo"``) is what every
+        # original plugin uses; the recursive case (``cloud_drive.
+        # providers[].auth.token_secret = "bar"``) lets plugins compose
+        # nested config without rewiring this loop per plugin.
+        def _walk(node: Any) -> None:
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    if (
+                        isinstance(k, str)
+                        and k.endswith("_secret")
+                        and isinstance(v, str)
+                        and v
+                        and v not in secret_values
+                    ):
+                        try:
+                            secret_values[v] = self.secrets.get(v).get_secret_value()
+                        except SecretNotFound:
+                            continue
+                    else:
+                        _walk(v)
+            elif isinstance(node, list):
+                for item in node:
+                    _walk(item)
+
+        _walk(plugin_config)
 
         if secret_values:
             log.info(

@@ -47,6 +47,8 @@
 
 - [Using plugins](Using-Plugins)
 - [Plugin authoring](Plugin-Authoring)
+- [calendar](Plugin-Reference-Calendar)
+- [cloud_drive](Plugin-Reference-Cloud-Drive)
 - [csv_io](Plugin-Reference-CSV-IO)
 - [datetime](Plugin-Reference-Datetime)
 - [email_sender](Plugin-Reference-Email-Sender)
@@ -55,17 +57,22 @@
 - [home_assistant](Plugin-Reference-Home-Assistant)
 - [http_client](Plugin-Reference-HTTP-Client)
 - [http_tool](Plugin-Reference-HTTP-Tool)
+- [imap_reader](Plugin-Reference-IMAP-Reader)
 - [image_gen](Plugin-Reference-Image-Gen)
 - [json_query](Plugin-Reference-JSON-Query)
+- [maps](Plugin-Reference-Maps)
 - [markdown_writer](Plugin-Reference-Markdown-Writer)
 - [pdf_reader](Plugin-Reference-PDF-Reader)
 - [propose_skill](Plugin-Reference-Propose-Skill)
 - [rss_reader](Plugin-Reference-RSS-Reader)
 - [shell](Plugin-Reference-Shell)
+- [slack](Plugin-Reference-Slack)
 - [sqlite](Plugin-Reference-SQLite)
 - [telegram_messenger](Plugin-Reference-Telegram-Messenger)
+- [weather](Plugin-Reference-Weather)
 - [web_search](Plugin-Reference-Web-Search)
 - [webhook](Plugin-Reference-Webhook)
+- [wikipedia](Plugin-Reference-Wikipedia)
 
 ### Reference
 

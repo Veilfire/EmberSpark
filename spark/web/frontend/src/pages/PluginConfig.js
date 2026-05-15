@@ -1,16 +1,25 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Info, ExternalLink } from "lucide-react";
 import { api } from "../lib/api";
 import { confirmDialog } from "../lib/confirm";
 import { HomeAssistantConfigEditor } from "../components/HomeAssistantConfigEditor";
+import { CalendarConfigEditor } from "../components/CalendarConfigEditor";
+import { ImapReaderConfigEditor } from "../components/ImapReaderConfigEditor";
+import { SlackConfigEditor } from "../components/SlackConfigEditor";
+import { CloudDriveConfigEditor } from "../components/CloudDriveConfigEditor";
 // Plugins that ship a bespoke editor (live-introspection grids etc.)
 // register here. The map is consulted in the active-plugin render
 // branch; everything else falls through to the auto-form.
 const CUSTOM_EDITORS = {
     home_assistant: HomeAssistantConfigEditor,
+    calendar: CalendarConfigEditor,
+    imap_reader: ImapReaderConfigEditor,
+    slack: SlackConfigEditor,
+    cloud_drive: CloudDriveConfigEditor,
 };
 // ---------------------------------------------------------------------------
 // Plugin-specific help hints. Keyed as "plugin_name.field_name". These fill
@@ -182,29 +191,53 @@ export default function PluginConfigPage() {
         queryKey: ["plugins"],
         queryFn: () => api.get("/api/plugin-config/"),
     });
-    const [selected, setSelected] = useState(null);
+    // URL is the source of truth so Failure Inspector deep-links
+    // (``/plugins?plugin=<name>&prefill=...``) land on the right plugin.
+    const [params, setParams] = useSearchParams();
+    const urlPlugin = params.get("plugin");
     const active = useMemo(() => {
-        if (!plugins.data)
+        if (!plugins.data || plugins.data.length === 0)
             return null;
-        if (selected === null && plugins.data.length > 0)
-            return plugins.data[0];
-        return plugins.data.find((p) => p.plugin_name === selected) ?? null;
-    }, [plugins.data, selected]);
-    return (_jsxs("div", { className: "space-y-4", children: [_jsxs("header", { children: [_jsx("h2", { className: "text-2xl font-bold", children: "Plugins" }), _jsx("p", { className: "text-spark-muted text-sm", children: "Configure built-in plugins without editing YAML. Operator-edited values override the agent YAML on overlapping fields. Every save is audited." })] }), _jsxs("div", { className: "flex gap-4", children: [_jsx("div", { className: "panel p-2 w-56 shrink-0", children: (plugins.data ?? []).map((p) => (_jsxs("button", { onClick: () => setSelected(p.plugin_name), className: `block w-full text-left px-2 py-1.5 rounded-md text-sm ${active?.plugin_name === p.plugin_name
-                                ? "bg-spark-border text-spark-text"
-                                : "text-spark-muted hover:bg-spark-border/50"}`, children: [_jsx("div", { className: "font-mono", children: p.plugin_name }), _jsx("div", { className: "text-xs", children: p.version })] }, p.plugin_name))) }), _jsx("div", { className: "flex-1 min-w-0", children: active && (() => {
-                            // ``key`` forces a fresh component instance per plugin so
-                            // the inner ``useState(info.config)`` re-initializes from
-                            // the new plugin's config. Without this, switching plugins
-                            // in the sidebar leaves ``draft`` holding the previous
-                            // plugin's fields — Save then sends the wrong shape and
-                            // the backend 422s with ``extra_forbidden`` on every field.
-                            const Custom = CUSTOM_EDITORS[active.plugin_name];
-                            if (Custom) {
-                                return _jsx(Custom, { info: active }, active.plugin_name);
-                            }
-                            return _jsx(PluginEditor, { info: active }, active.plugin_name);
-                        })() })] })] }));
+        if (urlPlugin) {
+            const match = plugins.data.find((p) => p.plugin_name === urlPlugin);
+            if (match)
+                return match;
+        }
+        return plugins.data[0];
+    }, [plugins.data, urlPlugin]);
+    // If the URL points at an unknown plugin (typo / removed plugin), clear
+    // the param so the dropdown reflects the fallback selection.
+    useEffect(() => {
+        if (!plugins.data || !urlPlugin)
+            return;
+        const exists = plugins.data.some((p) => p.plugin_name === urlPlugin);
+        if (!exists) {
+            const next = new URLSearchParams(params);
+            next.delete("plugin");
+            setParams(next, { replace: true });
+        }
+    }, [plugins.data, urlPlugin, params, setParams]);
+    function selectPlugin(name) {
+        const next = new URLSearchParams(params);
+        next.set("plugin", name);
+        // Switching plugins invalidates any in-flight ``?prefill=`` (it
+        // targets a different plugin); strip it to avoid cross-wiring.
+        next.delete("prefill");
+        setParams(next, { replace: true });
+    }
+    return (_jsxs("div", { className: "space-y-4", children: [_jsxs("header", { children: [_jsx("h2", { className: "text-2xl font-bold", children: "Plugins" }), _jsx("p", { className: "text-spark-muted text-sm", children: "Configure built-in plugins without editing YAML. Operator-edited values override the agent YAML on overlapping fields. Every save is audited." })] }), _jsxs("div", { className: "flex items-center gap-3 flex-wrap", children: [_jsx("label", { className: "text-sm text-spark-muted", children: "Plugin" }), _jsx("select", { className: "input font-mono text-sm min-w-[18rem]", value: active?.plugin_name ?? "", onChange: (e) => selectPlugin(e.target.value), disabled: !plugins.data || plugins.data.length === 0, children: (plugins.data ?? []).map((p) => (_jsxs("option", { value: p.plugin_name, children: [p.plugin_name, " \u00B7 v", p.version, p.fresh ? " · operator-edited" : ""] }, p.plugin_name))) }), plugins.data && (_jsxs("span", { className: "text-xs text-spark-muted", children: [plugins.data.length, " plugin", plugins.data.length === 1 ? "" : "s", " registered"] }))] }), active && (() => {
+                // ``key`` forces a fresh component instance per plugin so
+                // the inner ``useState(info.config)`` re-initializes from
+                // the new plugin's config. Without this, switching plugins
+                // leaves ``draft`` holding the previous plugin's fields —
+                // Save then sends the wrong shape and the backend 422s with
+                // ``extra_forbidden`` on every field.
+                const Custom = CUSTOM_EDITORS[active.plugin_name];
+                if (Custom) {
+                    return _jsx(Custom, { info: active }, active.plugin_name);
+                }
+                return _jsx(PluginEditor, { info: active }, active.plugin_name);
+            })()] }));
 }
 function PluginEditor({ info }) {
     const client = useQueryClient();

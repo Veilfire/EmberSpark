@@ -59,6 +59,17 @@ export type Prefill =
       add_domain?: string;
       add_service?: string;
       toggle?: "read_only";
+    }
+  | {
+      kind: "plugin_allowlist_grant";
+      plugin: string;
+      add_item?: string;
+      field?: string;
+      toggle?: string;
+      /** Optional secondary scope — e.g. cloud_drive emits
+       * ``provider`` so the editor flashes the right card's
+       * `allowed_paths` row instead of the global list. */
+      provider?: string;
     };
 
 export type PrefillKind = Prefill["kind"];

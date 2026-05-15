@@ -207,3 +207,193 @@ async def home_assistant_discover(
     # future generalization to a discover dispatcher keyed on plugin).
     _ = HomeAssistantPlugin
     return payload
+
+
+async def _generic_discover(
+    plugin_name: str,
+    discover_fn: Any,
+    *,
+    secret_field: str,
+    default_secret_name: str,
+    principal: Principal,
+) -> dict[str, Any]:
+    """Shared scaffolding for plugin-config discover endpoints.
+
+    Loads the saved plugin config, resolves a single named secret
+    into ``ctx.secrets``, calls the plugin's discover coroutine, and
+    audits the call at ``info`` severity.
+    """
+    handle = _plugin_or_404(plugin_name)
+    loaded = await load_plugin_config(plugin_name, handle.cls.config_schema)
+    cfg = dict(loaded.defaults)
+
+    from spark.runtime import get_secret_manager  # noqa: PLC0415
+
+    secrets: dict[str, str] = {}
+    try:
+        mgr = get_secret_manager()
+        secret_name = cfg.get(secret_field) or default_secret_name
+        try:
+            value = mgr.get(secret_name)
+            secrets[secret_name] = value.get_secret_value()
+        except Exception:
+            pass
+    except Exception:  # pragma: no cover — boot path
+        pass
+
+    class _Ctx:
+        pass
+
+    ctx = _Ctx()
+    ctx.secrets = secrets  # type: ignore[attr-defined]
+
+    result = await discover_fn(cfg, ctx)
+    payload = result.model_dump()
+    try:
+        from spark.persistence.db import session_scope  # noqa: PLC0415
+        from spark.persistence.learning_repos import (  # noqa: PLC0415
+            AuditRepository,
+        )
+
+        async with session_scope() as session:
+            await AuditRepository(session).append(
+                actor=principal.subject,
+                kind="security.plugin.discover",
+                target=plugin_name,
+                diff={
+                    "ok": payload.get("ok"),
+                    "error_code": payload.get("error_code"),
+                },
+                severity="info",
+            )
+    except Exception:  # pragma: no cover
+        pass
+    return payload
+
+
+@router.post("/calendar/discover")
+async def calendar_discover(
+    principal: Principal = Depends(require_operator),
+) -> dict[str, Any]:
+    """Read-only CalDAV introspection used by the live-config editor."""
+    from spark.plugins.builtins.calendar import discover as _discover  # noqa: PLC0415
+
+    return await _generic_discover(
+        "calendar",
+        _discover,
+        secret_field="password_secret",
+        default_secret_name="calendar_password",
+        principal=principal,
+    )
+
+
+@router.post("/imap_reader/discover")
+async def imap_reader_discover(
+    principal: Principal = Depends(require_operator),
+) -> dict[str, Any]:
+    """Read-only IMAP introspection used by the live-config editor."""
+    from spark.plugins.builtins.imap_reader import discover as _discover  # noqa: PLC0415
+
+    return await _generic_discover(
+        "imap_reader",
+        _discover,
+        secret_field="password_secret",
+        default_secret_name="imap_password",
+        principal=principal,
+    )
+
+
+@router.post("/slack/discover")
+async def slack_discover(
+    principal: Principal = Depends(require_operator),
+) -> dict[str, Any]:
+    """Read-only Slack introspection used by the live-config editor."""
+    from spark.plugins.builtins.slack import discover as _discover  # noqa: PLC0415
+
+    return await _generic_discover(
+        "slack",
+        _discover,
+        secret_field="bot_token_secret",
+        default_secret_name="slack_bot_token",
+        principal=principal,
+    )
+
+
+@router.post("/cloud_drive/discover")
+async def cloud_drive_discover(
+    principal: Principal = Depends(require_operator),
+) -> dict[str, Any]:
+    """Per-provider rclone health probe used by the live-config editor.
+
+    cloud_drive's config nests N providers each with their own secret
+    references (``providers[].auth.token_secret`` etc.), so the
+    ``_generic_discover`` helper — which resolves a single secret
+    name — doesn't fit. We walk the config recursively, resolve every
+    ``*_secret`` field via the vault, and hand the plugin a
+    pre-populated ``ctx.secrets`` dict.
+    """
+    from spark.plugins.builtins.cloud_drive import discover as _discover  # noqa: PLC0415
+
+    handle = _plugin_or_404("cloud_drive")
+    loaded = await load_plugin_config("cloud_drive", handle.cls.config_schema)
+    cfg = dict(loaded.defaults)
+
+    from spark.runtime import get_secret_manager  # noqa: PLC0415
+
+    secrets: dict[str, str] = {}
+    try:
+        mgr = get_secret_manager()
+
+        def _walk(node: Any) -> None:
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    if (
+                        isinstance(k, str)
+                        and k.endswith("_secret")
+                        and isinstance(v, str)
+                        and v
+                        and v not in secrets
+                    ):
+                        try:
+                            secrets[v] = mgr.get(v).get_secret_value()
+                        except Exception:
+                            continue
+                    else:
+                        _walk(v)
+            elif isinstance(node, list):
+                for item in node:
+                    _walk(item)
+
+        _walk(cfg)
+    except Exception:  # pragma: no cover — boot path
+        pass
+
+    class _Ctx:
+        pass
+
+    ctx = _Ctx()
+    ctx.secrets = secrets  # type: ignore[attr-defined]
+
+    result = await _discover(cfg, ctx)
+    payload = result.model_dump()
+    try:
+        from spark.persistence.db import session_scope  # noqa: PLC0415
+        from spark.persistence.learning_repos import (  # noqa: PLC0415
+            AuditRepository,
+        )
+
+        async with session_scope() as session:
+            await AuditRepository(session).append(
+                actor=principal.subject,
+                kind="security.plugin.discover",
+                target="cloud_drive",
+                diff={
+                    "ok": payload.get("ok"),
+                    "error_code": payload.get("error_code"),
+                    "provider_count": len(payload.get("providers") or []),
+                },
+                severity="info",
+            )
+    except Exception:  # pragma: no cover
+        pass
+    return payload
