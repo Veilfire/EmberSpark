@@ -1,5 +1,3 @@
-    # syntax=docker/dockerfile:1.7
-
 # Multi-stage build for a lean Spark image.
 # Stage 1: build frontend (Node).
 # Stage 2: build Python wheels.
@@ -100,46 +98,29 @@ RUN pip install --no-index --find-links /wheels spark-runtime[openai,anthropic,o
 #     ``SentenceTransformer()`` constructor we used previously hides
 #     both behind a non-TTY ``tqdm`` that silently no-ops in build
 #     context, leaving you staring at a "Warning: …" line for minutes.
-#   - The ``--mount=type=cache`` lines reuse downloaded weights across
-#     builds, so a rebuild after a cache-bust upstream takes seconds
-#     instead of redownloading 55MB. Cache survives ``buildx prune``.
-RUN --mount=type=cache,target=/opt/spark/hf-cache,uid=1000,gid=1000 \
-    --mount=type=cache,target=/root/.cache/huggingface \
-    python -u <<'PY'
-import os, sys, time
-from huggingface_hub import snapshot_download
+#
+# The logic lives in hf_prefetch.py (copied in, not an inline heredoc) so the
+# build is PORTABLE across BuildKit (Docker Desktop) and classic buildah/podman
+# — the latter doesn't parse BuildKit `RUN --mount` / heredocs. A plain RUN also
+# commits the weights into the image layer (a `--mount=type=cache` would not),
+# which is what the "baked into the image" note above actually wants. Tradeoff:
+# no cross-build download cache, so a rebuild re-fetches the ~55MB.
+# Be gentle on the network. huggingface_hub's default downloaders open many
+# parallel connections and saturate the pipe — which hammers home/LAN links
+# and itself triggers "Server disconnected" drops. Throttle them:
+#   - HF_HUB_DISABLE_XET: turn off the Xet backend (chunked, highly-parallel
+#     range-gets); fall back to plain one-connection-per-file HTTPS.
+#   - HF_HUB_ENABLE_HF_TRANSFER=0: keep the aggressive Rust accelerator off.
+#   - HF_XET_NUM_CONCURRENT_RANGE_GETS: low cap in case Xet is ever re-enabled.
+# Combined with max_workers=2 in hf_prefetch.py, that's at most ~2 connections.
+# Set here (not the big ENV block) so the cached pip layer isn't invalidated;
+# these also persist into the image so any runtime download stays gentle too.
+ENV HF_HUB_DISABLE_XET=1 \
+    HF_HUB_ENABLE_HF_TRANSFER=0 \
+    HF_XET_NUM_CONCURRENT_RANGE_GETS=2
 
-# Must match spark.memory.embeddings.SentenceTransformersProvider default
-# and spark.memory.retrieval._get_cross_encoder — if you change either,
-# update both here.
-MODELS = [
-    "BAAI/bge-small-en-v1.5",
-    "cross-encoder/ms-marco-MiniLM-L-6-v2",
-]
-
-print(f"[hf-prefetch] HF_HOME = {os.environ['HF_HOME']}", flush=True)
-for repo in MODELS:
-    print(f"[hf-prefetch] {repo}: starting", flush=True)
-    started = time.monotonic()
-    try:
-        # ``etag_timeout`` caps the metadata request; the per-file
-        # download falls back to ``HF_HUB_DOWNLOAD_TIMEOUT`` (env var)
-        # which is set in the runtime stage above.
-        snapshot_download(
-            repo_id=repo,
-            etag_timeout=30,
-            local_files_only=False,
-        )
-    except Exception as exc:
-        # Hard-fail the build so a flaky HF doesn't bake a broken
-        # image. The operator can retry; the cache mount means a
-        # successful prior fetch is reused.
-        print(f"[hf-prefetch] {repo}: FAILED {type(exc).__name__}: {exc}", flush=True)
-        sys.exit(1)
-    elapsed = time.monotonic() - started
-    print(f"[hf-prefetch] {repo}: done in {elapsed:.1f}s", flush=True)
-print("[hf-prefetch] all models cached", flush=True)
-PY
+COPY spark/daemon/docker/hf_prefetch.py /tmp/hf_prefetch.py
+RUN python -u /tmp/hf_prefetch.py && rm -f /tmp/hf_prefetch.py
 RUN chown -R spark:spark /opt/spark/hf-cache
 
 # Copy built frontend assets into the package's static directory.
