@@ -88,8 +88,10 @@ secrets.age
 *.sqlite3
 *.sqlite3-journal
 
-# Forensic captures (encrypted-at-rest, but local-only)
-forensic/
+# Forensic captures (encrypted-at-rest, but local-only).
+# Anchored to repo root — bare `forensic/` would also swallow the
+# `spark/forensic/` source module.
+/forensic/
 *.forensic
 
 # Build outputs
