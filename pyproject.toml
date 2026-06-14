@@ -39,7 +39,12 @@ dependencies = [
     "chromadb>=0.5",
     "sentence-transformers>=3.0",
     "rank-bm25>=0.2.2",
-    "apscheduler>=4.0.0a5",
+    # Pin to the stable 3.x line. The scheduler code (spark/scheduler/scheduler.py)
+    # targets APScheduler 3's AsyncIOScheduler + SQLAlchemyJobStore API; the old
+    # ``>=4.0.0a5`` floor pulled a 4.0 pre-release whose import paths this code
+    # doesn't even use. 3.x is also outside the GHSA-9cfw-f3f9-7mm7 (CVE-2026-31072,
+    # critical) vulnerable range, which only covers the 4.0.0a1–4.0.0a6 alphas.
+    "apscheduler>=3.11,<4",
     "httpx>=0.27",
     "structlog>=24.4",
     "pyrage>=1.2",           # age_file vault (primary secrets backend, H1.3)
@@ -50,7 +55,7 @@ dependencies = [
     "aiofiles>=24.1",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
-    "starlette>=0.40",
+    "starlette>=1.0.1",      # >=1.0.1: GHSA-86qp-5c8j-p5mr / CVE-2026-48710
     "python-multipart>=0.0.12",
     "itsdangerous>=2.2",
     "websockets>=13",
@@ -58,7 +63,7 @@ dependencies = [
     "watchdog>=5.0",
     # Phase G2 — new built-in plugins
     "trafilatura>=1.12",     # http_tool readability extraction
-    "pypdf>=5.1",            # pdf_reader
+    "pypdf>=6.12.0",         # pdf_reader (>=6.12.0: CVE-2026-48155 / CVE-2026-48156)
     "feedparser>=6.0",       # rss_reader
     "jmespath>=1.0",         # json_query
     # Plugin batch wave: calendar + cloud_drive
@@ -185,3 +190,13 @@ exclude_lines = [
 [tool.bandit]
 exclude_dirs = ["tests"]
 skips = ["B101"]
+
+[tool.uv]
+# Security floor for a transitive dependency (pulled in via httpx/anyio/requests).
+# idna < 3.15 is vulnerable to GHSA-65pc-fj4g-8rjx / CVE-2026-45409; this keeps
+# the resolver from ever slipping back below the patched line.
+constraint-dependencies = ["idna>=3.15"]
+# Supply-chain cooldown: this lockfile is resolved with a "min age 5 days" gate
+# (`uv lock --exclude-newer <today-5d>`) so we never adopt a release that is
+# fresh enough to be a not-yet-detected compromised/yanked upload. Re-run with
+# an updated date when intentionally refreshing dependencies.
