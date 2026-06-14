@@ -21,7 +21,16 @@ spec:
         - 192.168.0.0/16
         - 10.0.0.0/8
     credentials:
-      rotate_on_startup: true
+      # Don't rotate web credentials on every daemon start. With `true`, each
+      # restart (incl. crash-restarts) mints a new password AND invalidates any
+      # logged-in session — which surfaces as a 401 mid/after a run. `false`
+      # keeps stable creds persisted on the spark-state volume across restarts.
+      rotate_on_startup: false
+    # Web session lifetime. The model default is 1h, which 401s long or idle
+    # runs (the page's next poll / log-stream call fails once the cookie ages
+    # out). 24h here so a session comfortably outlives a run on a trusted LAN.
+    # Range: 60s–30d. Raise/lower to taste.
+    session_ttl_seconds: 86400
   data_volume:
     enabled: true
     root: /data/spark-volume
