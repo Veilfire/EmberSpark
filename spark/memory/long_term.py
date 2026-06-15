@@ -72,6 +72,12 @@ class LongTermMemory:
             return self._collection
         import chromadb
 
+        # Neutralize chromadb's trust_remote_code embedding-function sink
+        # (CVE-2026-45829) before touching any collection. Idempotent.
+        from spark.memory._chroma_hardening import harden_chromadb
+
+        harden_chromadb()
+
         self._client = chromadb.PersistentClient(path=str(self.persist_path))
         self._collection = self._client.get_or_create_collection(
             name=self.collection_name,
