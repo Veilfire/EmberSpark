@@ -20,14 +20,19 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from spark.config.enums import DataScope
 from spark.errors.codes import ErrorCode, SparkError
 from spark.logging import get_logger
 from spark.memory.session_memory import SessionEntry, SessionMemory
 from spark.persistence.db import session_scope
-from spark.persistence.models import AgentRow, ChatTurnRow, SessionRow
+from spark.persistence.models import (
+    AgentRow,
+    ChatTurnRow,
+    SessionMemoryRow,
+    SessionRow,
+)
 from spark.privacy.guardrails import apply_guardrails
 from spark.runtime.engine import (
     _classify_tool_error,
@@ -82,6 +87,20 @@ class CreateSessionRequest(BaseModel):
         return v
 
 
+class UpdateSessionRequest(BaseModel):
+    """Rename and/or pin a chat. Both fields optional; at least one required.
+
+    Rename writes the free-text ``title`` (NOT the slug ``name``) — the same
+    field the auto-titler populates — so a user rename is automatically
+    protected from being relabelled on the first turn.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = Field(default=None, min_length=1, max_length=160)
+    pinned: bool | None = None
+
+
 class ChatContextConfig(BaseModel):
     """Per-turn context knobs sent by the UI."""
 
@@ -116,23 +135,40 @@ class ChatTurnRequest(BaseModel):
 async def list_sessions(_: Principal = Depends(require_viewer)) -> list[dict[str, Any]]:
     async with session_scope() as session:
         result = await session.execute(
-            select(SessionRow).order_by(SessionRow.updated_at.desc()).limit(200)
+            select(SessionRow)
+            .order_by(SessionRow.pinned.desc(), SessionRow.updated_at.desc())
+            .limit(200)
         )
         rows = list(result.scalars().all())
-    return [
-        {
-            "session_id": r.session_id,
-            "name": r.name,
-            # Auto-generated 5-word label populated after the first
-            # user-assistant exchange. Null until the first turn finishes;
-            # the UI falls back to ``session_id`` in that case.
-            "title": r.title,
-            "agent_name": r.agent_name,
-            "created_at": r.created_at,
-            "updated_at": r.updated_at,
-        }
-        for r in rows
-    ]
+    return [_session_view(r) for r in rows]
+
+
+def _session_view(r: SessionRow) -> dict[str, Any]:
+    """Serialize a chat row for the sidebar.
+
+    ``title`` is the auto-generated 5-word label (or a user rename); it is
+    null until the first turn finishes, in which case the UI falls back to
+    ``session_id``.
+    """
+    return {
+        "session_id": r.session_id,
+        "name": r.name,
+        "title": r.title,
+        "pinned": r.pinned,
+        "agent_name": r.agent_name,
+        "created_at": r.created_at,
+        "updated_at": r.updated_at,
+    }
+
+
+def _publish_session_event(kind: str, **fields: Any) -> None:
+    """Best-effort SSE fan-out so open Chat tabs live-update. Never raises."""
+    try:
+        from spark.web.events import get_bus  # noqa: PLC0415
+
+        get_bus().publish(kind, **fields)
+    except Exception:  # pragma: no cover — bus is best-effort
+        pass
 
 
 @router.post("/sessions")
@@ -151,6 +187,74 @@ async def create_session(
             SessionRow(session_id=session_id, name=body.name, agent_name=body.agent_name)
         )
     return {"session_id": session_id}
+
+
+@router.put("/sessions/{session_id}")
+async def update_session(
+    session_id: str,
+    body: UpdateSessionRequest,
+    _: Principal = Depends(require_operator),
+) -> dict[str, Any]:
+    """Rename a chat (set ``title``) and/or pin it.
+
+    Rename writes ``title`` — the same field ``_maybe_generate_session_title``
+    populates — so a user-renamed chat is never relabelled by the first-turn
+    auto-titler (it short-circuits when ``title`` is already set).
+    """
+    if not _ID_PATTERN.match(session_id):
+        raise HTTPException(status_code=400, detail="invalid session_id")
+    if body.title is None and body.pinned is None:
+        raise HTTPException(status_code=400, detail="nothing to update")
+    async with session_scope() as session:
+        row = await session.get(SessionRow, session_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="session not found")
+        if body.title is not None:
+            row.title = body.title
+        if body.pinned is not None:
+            row.pinned = body.pinned
+        row.updated_at = utcnow()
+        view = _session_view(row)
+    _publish_session_event(
+        "chat.session_updated",
+        session_id=session_id,
+        title=view["title"],
+        pinned=view["pinned"],
+        agent_name=view["agent_name"],
+    )
+    return view
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(
+    session_id: str, _: Principal = Depends(require_operator)
+) -> dict[str, bool]:
+    """Hard-delete a chat and all of its messages.
+
+    There are no DB-level foreign keys from ``session_memory`` / ``chat_turns``
+    back to ``sessions``, so dependent rows are removed explicitly. Refuses
+    (409) while a turn is actively streaming so the detached background task
+    can't resurrect a just-deleted session. Promoted long-term memories are
+    intentionally retained (they are durable knowledge, not the chat's
+    transcript).
+    """
+    if not _ID_PATTERN.match(session_id):
+        raise HTTPException(status_code=400, detail="invalid session_id")
+    if broker_for_session(session_id) is not None:
+        raise HTTPException(status_code=409, detail="a response is still streaming")
+    async with session_scope() as session:
+        row = await session.get(SessionRow, session_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="session not found")
+        await session.execute(
+            delete(SessionMemoryRow).where(SessionMemoryRow.session_id == session_id)
+        )
+        await session.execute(
+            delete(ChatTurnRow).where(ChatTurnRow.session_id == session_id)
+        )
+        await session.delete(row)
+    _publish_session_event("chat.session_deleted", session_id=session_id)
+    return {"ok": True}
 
 
 @router.get("/sessions/{session_id}/history")
@@ -1023,6 +1127,9 @@ async def _maybe_generate_session_title(
     title = _re.sub(r"\s+", " ", title)
     if not title:
         return
+    # Hard cap at 5 words — the prompt asks for 2-5 but a model can overshoot —
+    # then clip characters as a final guard against a pathological long token.
+    title = " ".join(title.split()[:5])
     title = title[:60]
 
     async with session_scope() as session:

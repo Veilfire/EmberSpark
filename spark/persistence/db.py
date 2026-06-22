@@ -192,6 +192,7 @@ def _apply_additive_migrations(sync_conn: Any) -> None:
     # the next turn on each existing session populates the column.
     session_columns = [
         ("title", "TEXT"),
+        ("pinned", "INTEGER NOT NULL DEFAULT 0"),
     ]
     try:
         existing = {

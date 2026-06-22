@@ -4,10 +4,14 @@ import {
   Check,
   Copy,
   MessageSquare,
+  Pencil,
+  Pin,
+  PinOff,
   Plus,
   Send,
   Settings2,
   Square,
+  Trash2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -16,7 +20,7 @@ import { AgentSummary } from "../lib/types";
 import { MarkdownView } from "../components/MarkdownView";
 import { RelativeTime } from "../components/RelativeTime";
 import { EmptyState } from "../components/primitives";
-import { ConfirmDialog } from "../components/ConfirmDialog";
+import { confirmDialog } from "../lib/confirm";
 import { Modal } from "../components/Modal";
 import {
   FailureInspector,
@@ -50,8 +54,10 @@ interface ChatMessage {
 type SessionSummary = {
   session_id: string;
   name: string;
-  // Auto-generated 5-word summary, null until the first turn lands.
+  // Auto-generated 5-word summary (or a user rename), null until the first
+  // turn lands.
   title: string | null;
+  pinned: boolean;
   agent_name: string;
   created_at: string;
   updated_at: string;
@@ -121,7 +127,11 @@ export default function Chat() {
       onMessage: (raw) => {
         if (typeof raw !== "object" || raw === null) return;
         const env = raw as { kind?: string };
-        if (env.kind !== "chat.session_updated") return;
+        if (
+          env.kind !== "chat.session_updated" &&
+          env.kind !== "chat.session_deleted"
+        )
+          return;
         qc.invalidateQueries({ queryKey: ["chat-sessions"] });
       },
     });
@@ -135,9 +145,7 @@ export default function Chat() {
   const [connected, setConnected] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [sessionFilter, setSessionFilter] = useState("");
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
-    null,
-  );
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const [contextConfig, setContextConfig] = useState<ContextConfig>(
     DEFAULT_CONTEXT,
   );
@@ -145,6 +153,9 @@ export default function Chat() {
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  // Guards inline-rename against a double commit (Enter, then blur as the
+  // input unmounts) — see commitRename.
+  const renamingRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -360,6 +371,57 @@ export default function Chat() {
     setStreaming(false);
   }
 
+  async function commitRename(s: SessionSummary, nextTitle: string) {
+    // Only the first commit for this row wins — pressing Enter can be
+    // followed by a blur event as the input unmounts.
+    if (renamingRef.current !== s.session_id) return;
+    renamingRef.current = null;
+    setRenamingId(null);
+    const trimmed = nextTitle.trim();
+    if (!trimmed || trimmed === (s.title ?? "")) return;
+    try {
+      await api.put(`/api/chat/sessions/${encodeURIComponent(s.session_id)}`, {
+        title: trimmed,
+      });
+      toast.success("Chat renamed");
+      qc.invalidateQueries({ queryKey: ["chat-sessions"] });
+    } catch (e) {
+      toast.error(`Rename failed: ${(e as Error).message}`);
+    }
+  }
+
+  async function togglePin(s: SessionSummary) {
+    try {
+      await api.put(`/api/chat/sessions/${encodeURIComponent(s.session_id)}`, {
+        pinned: !s.pinned,
+      });
+      qc.invalidateQueries({ queryKey: ["chat-sessions"] });
+    } catch (e) {
+      toast.error(
+        `${s.pinned ? "Unpin" : "Pin"} failed: ${(e as Error).message}`,
+      );
+    }
+  }
+
+  async function deleteSession(s: SessionSummary) {
+    const label = s.title ?? s.name ?? s.session_id;
+    const ok = await confirmDialog({
+      title: "Delete chat?",
+      description: `"${label}" and all of its messages will be permanently removed.`,
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+    try {
+      await api.del(`/api/chat/sessions/${encodeURIComponent(s.session_id)}`);
+      toast.success("Chat deleted");
+      if (s.session_id === sessionId) endSession();
+      qc.invalidateQueries({ queryKey: ["chat-sessions"] });
+    } catch (e) {
+      toast.error(`Delete failed: ${(e as Error).message}`);
+    }
+  }
+
   function stopStreaming() {
     wsRef.current?.close();
     setStreaming(false);
@@ -396,13 +458,22 @@ export default function Chat() {
   }
 
   const filteredSessions = useMemo(() => {
-    if (!sessionFilter) return sessions.data ?? [];
-    const q = sessionFilter.toLowerCase();
-    return (sessions.data ?? []).filter(
-      (s) =>
-        s.session_id.toLowerCase().includes(q) ||
-        s.agent_name.toLowerCase().includes(q) ||
-        s.name.toLowerCase().includes(q),
+    const all = sessions.data ?? [];
+    const q = sessionFilter.trim().toLowerCase();
+    const matched = !q
+      ? all
+      : all.filter(
+          (s) =>
+            s.session_id.toLowerCase().includes(q) ||
+            s.agent_name.toLowerCase().includes(q) ||
+            s.name.toLowerCase().includes(q) ||
+            (s.title ?? "").toLowerCase().includes(q),
+        );
+    // Pinned chats float to the top; recency within each group.
+    return [...matched].sort(
+      (a, b) =>
+        Number(b.pinned) - Number(a.pinned) ||
+        b.updated_at.localeCompare(a.updated_at),
     );
   }, [sessions.data, sessionFilter]);
 
@@ -461,29 +532,103 @@ export default function Chat() {
                     : "hover:bg-spark-border/30"
                 }`}
               >
-                <button
-                  className="w-full text-left px-3 py-2 transition"
-                  onClick={() => resumeSession(s)}
-                >
-                  {/* Primary line: auto-generated title (after first turn) */}
-                  {/* with a graceful fall-back to the session_id while the */}
-                  {/* title is still null. */}
-                  <div className="text-sm truncate text-spark-text">
-                    {s.title ?? (
-                      <span className="font-mono text-xs">{s.session_id}</span>
-                    )}
+                {renamingId === s.session_id ? (
+                  <div className="px-3 py-2">
+                    <input
+                      className="input w-full text-sm"
+                      autoFocus
+                      defaultValue={s.title ?? ""}
+                      placeholder="Chat name…"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          commitRename(s, e.currentTarget.value);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          renamingRef.current = null;
+                          setRenamingId(null);
+                        }
+                      }}
+                      onBlur={(e) => commitRename(s, e.currentTarget.value)}
+                    />
                   </div>
-                  {/* Secondary line: agent name + canonical chat id + relative time. */}
-                  <div className="flex items-center gap-2 mt-0.5 text-[10px] text-spark-muted">
-                    <span className="truncate">{s.agent_name}</span>
-                    {s.title && (
-                      <span className="font-mono truncate">{s.session_id}</span>
-                    )}
-                    <span className="shrink-0 ml-auto">
-                      <RelativeTime ts={s.updated_at} />
-                    </span>
-                  </div>
-                </button>
+                ) : (
+                  <>
+                    <button
+                      className="w-full text-left pl-3 pr-20 py-2 transition"
+                      onClick={() => resumeSession(s)}
+                    >
+                      {/* Primary line: pin glyph + auto-generated title */}
+                      {/* (after first turn) with a graceful fall-back to */}
+                      {/* the session_id while the title is still null. */}
+                      <div className="flex items-center gap-1.5">
+                        {s.pinned && (
+                          <Pin className="w-3 h-3 text-spark-accent fill-spark-accent shrink-0" />
+                        )}
+                        <div className="text-sm truncate text-spark-text">
+                          {s.title ?? (
+                            <span className="font-mono text-xs">
+                              {s.session_id}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {/* Secondary line: agent + canonical chat id + time. */}
+                      <div className="flex items-center gap-2 mt-0.5 text-[10px] text-spark-muted">
+                        <span className="truncate">{s.agent_name}</span>
+                        {s.title && (
+                          <span className="font-mono truncate">
+                            {s.session_id}
+                          </span>
+                        )}
+                        <span className="shrink-0 ml-auto">
+                          <RelativeTime ts={s.updated_at} />
+                        </span>
+                      </div>
+                    </button>
+                    {/* Hover actions: pin / rename / delete. */}
+                    <div className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+                      <button
+                        className="btn-icon"
+                        title={s.pinned ? "Unpin" : "Pin"}
+                        aria-label={s.pinned ? "Unpin chat" : "Pin chat"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePin(s);
+                        }}
+                      >
+                        {s.pinned ? (
+                          <PinOff className="w-3.5 h-3.5" />
+                        ) : (
+                          <Pin className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      <button
+                        className="btn-icon"
+                        title="Rename"
+                        aria-label="Rename chat"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          renamingRef.current = s.session_id;
+                          setRenamingId(s.session_id);
+                        }}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        className="btn-icon text-spark-muted hover:text-spark-danger"
+                        title="Delete"
+                        aria-label="Delete chat"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteSession(s);
+                        }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ))
           )}
@@ -753,20 +898,6 @@ export default function Chat() {
           </div>
         </div>
       </Modal>
-
-      <ConfirmDialog
-        open={!!showDeleteConfirm}
-        title="Delete session?"
-        description="Removes the session and all its messages."
-        tone="danger"
-        confirmLabel="Delete"
-        onCancel={() => setShowDeleteConfirm(null)}
-        onConfirm={() => {
-          // For now we just hide locally — no backend delete route exists yet.
-          toast.info("Session hidden from list");
-          setShowDeleteConfirm(null);
-        }}
-      />
     </div>
   );
 }

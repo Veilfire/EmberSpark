@@ -1,13 +1,13 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, MessageSquare, Plus, Send, Settings2, Square, X, } from "lucide-react";
+import { Check, Copy, MessageSquare, Pencil, Pin, PinOff, Plus, Send, Settings2, Square, Trash2, X, } from "lucide-react";
 import { toast } from "sonner";
 import { api, sseConnect } from "../lib/api";
 import { MarkdownView } from "../components/MarkdownView";
 import { RelativeTime } from "../components/RelativeTime";
 import { EmptyState } from "../components/primitives";
-import { ConfirmDialog } from "../components/ConfirmDialog";
+import { confirmDialog } from "../lib/confirm";
 import { Modal } from "../components/Modal";
 import { FailureInspector, WhyToggle, isSparkError, } from "../components/FailureInspector";
 const DEFAULT_CONTEXT = {
@@ -63,7 +63,8 @@ export default function Chat() {
                 if (typeof raw !== "object" || raw === null)
                     return;
                 const env = raw;
-                if (env.kind !== "chat.session_updated")
+                if (env.kind !== "chat.session_updated" &&
+                    env.kind !== "chat.session_deleted")
                     return;
                 qc.invalidateQueries({ queryKey: ["chat-sessions"] });
             },
@@ -77,12 +78,15 @@ export default function Chat() {
     const [connected, setConnected] = useState(false);
     const [streaming, setStreaming] = useState(false);
     const [sessionFilter, setSessionFilter] = useState("");
-    const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+    const [renamingId, setRenamingId] = useState(null);
     const [contextConfig, setContextConfig] = useState(DEFAULT_CONTEXT);
     const [showContext, setShowContext] = useState(false);
     const wsRef = useRef(null);
     const scrollRef = useRef(null);
     const inputRef = useRef(null);
+    // Guards inline-rename against a double commit (Enter, then blur as the
+    // input unmounts) — see commitRename.
+    const renamingRef = useRef(null);
     useEffect(() => {
         return () => {
             wsRef.current?.close();
@@ -290,6 +294,59 @@ export default function Chat() {
         setConnected(false);
         setStreaming(false);
     }
+    async function commitRename(s, nextTitle) {
+        // Only the first commit for this row wins — pressing Enter can be
+        // followed by a blur event as the input unmounts.
+        if (renamingRef.current !== s.session_id)
+            return;
+        renamingRef.current = null;
+        setRenamingId(null);
+        const trimmed = nextTitle.trim();
+        if (!trimmed || trimmed === (s.title ?? ""))
+            return;
+        try {
+            await api.put(`/api/chat/sessions/${encodeURIComponent(s.session_id)}`, {
+                title: trimmed,
+            });
+            toast.success("Chat renamed");
+            qc.invalidateQueries({ queryKey: ["chat-sessions"] });
+        }
+        catch (e) {
+            toast.error(`Rename failed: ${e.message}`);
+        }
+    }
+    async function togglePin(s) {
+        try {
+            await api.put(`/api/chat/sessions/${encodeURIComponent(s.session_id)}`, {
+                pinned: !s.pinned,
+            });
+            qc.invalidateQueries({ queryKey: ["chat-sessions"] });
+        }
+        catch (e) {
+            toast.error(`${s.pinned ? "Unpin" : "Pin"} failed: ${e.message}`);
+        }
+    }
+    async function deleteSession(s) {
+        const label = s.title ?? s.name ?? s.session_id;
+        const ok = await confirmDialog({
+            title: "Delete chat?",
+            description: `"${label}" and all of its messages will be permanently removed.`,
+            tone: "danger",
+            confirmLabel: "Delete",
+        });
+        if (!ok)
+            return;
+        try {
+            await api.del(`/api/chat/sessions/${encodeURIComponent(s.session_id)}`);
+            toast.success("Chat deleted");
+            if (s.session_id === sessionId)
+                endSession();
+            qc.invalidateQueries({ queryKey: ["chat-sessions"] });
+        }
+        catch (e) {
+            toast.error(`Delete failed: ${e.message}`);
+        }
+    }
     function stopStreaming() {
         wsRef.current?.close();
         setStreaming(false);
@@ -321,12 +378,17 @@ export default function Chat() {
         }
     }
     const filteredSessions = useMemo(() => {
-        if (!sessionFilter)
-            return sessions.data ?? [];
-        const q = sessionFilter.toLowerCase();
-        return (sessions.data ?? []).filter((s) => s.session_id.toLowerCase().includes(q) ||
-            s.agent_name.toLowerCase().includes(q) ||
-            s.name.toLowerCase().includes(q));
+        const all = sessions.data ?? [];
+        const q = sessionFilter.trim().toLowerCase();
+        const matched = !q
+            ? all
+            : all.filter((s) => s.session_id.toLowerCase().includes(q) ||
+                s.agent_name.toLowerCase().includes(q) ||
+                s.name.toLowerCase().includes(q) ||
+                (s.title ?? "").toLowerCase().includes(q));
+        // Pinned chats float to the top; recency within each group.
+        return [...matched].sort((a, b) => Number(b.pinned) - Number(a.pinned) ||
+            b.updated_at.localeCompare(a.updated_at));
     }, [sessions.data, sessionFilter]);
     const activeSession = sessions.data?.find((s) => s.session_id === sessionId);
     // Chat with sidebar layout.
@@ -334,18 +396,34 @@ export default function Chat() {
                                 ? "No sessions yet. Pick an agent and click +."
                                 : "No matches." })) : (filteredSessions.map((s) => (_jsx("div", { className: `relative group border-b border-spark-border/50 ${s.session_id === sessionId
                                 ? "bg-spark-accent/10 border-l-2 border-l-spark-accent"
-                                : "hover:bg-spark-border/30"}`, children: _jsxs("button", { className: "w-full text-left px-3 py-2 transition", onClick: () => resumeSession(s), children: [_jsx("div", { className: "text-sm truncate text-spark-text", children: s.title ?? (_jsx("span", { className: "font-mono text-xs", children: s.session_id })) }), _jsxs("div", { className: "flex items-center gap-2 mt-0.5 text-[10px] text-spark-muted", children: [_jsx("span", { className: "truncate", children: s.agent_name }), s.title && (_jsx("span", { className: "font-mono truncate", children: s.session_id })), _jsx("span", { className: "shrink-0 ml-auto", children: _jsx(RelativeTime, { ts: s.updated_at }) })] })] }) }, s.session_id)))) })] }), _jsx("div", { className: "flex-1 flex flex-col min-w-0", children: !sessionId ? (_jsx("div", { className: "flex-1 flex items-center justify-center", children: _jsx(EmptyState, { icon: _jsx(MessageSquare, { className: "w-10 h-10" }), title: "Start a conversation", description: "Pick an agent in the sidebar and start a new session to chat." }) })) : (_jsxs("div", { className: "panel flex-1 flex flex-col shadow-sm overflow-hidden", children: [_jsxs("div", { className: "border-b border-spark-border px-4 py-2 flex items-center justify-between text-sm shrink-0", children: [_jsxs("div", { className: "flex items-center gap-2 min-w-0", children: [_jsx(MessageSquare, { className: "w-4 h-4 text-spark-accent shrink-0" }), activeSession?.title ? (_jsxs(_Fragment, { children: [_jsx("span", { className: "font-medium text-sm truncate", children: activeSession.title }), _jsx("span", { className: "font-mono text-xs text-spark-muted truncate shrink-0", children: sessionId })] })) : (_jsx("span", { className: "font-mono text-xs truncate", children: sessionId })), _jsx("span", { className: "chip text-[10px] shrink-0", children: agentName }), activeSession && (_jsxs("span", { className: "text-xs text-spark-muted shrink-0", children: ["\u2022 started ", _jsx(RelativeTime, { ts: activeSession.created_at })] }))] }), _jsxs("div", { className: "flex items-center gap-2 shrink-0", children: [_jsx("span", { className: `chip ${connected ? "chip-good" : "chip-danger"} text-[10px]`, children: connected ? "connected" : "disconnected" }), _jsx("button", { className: "btn-icon", onClick: () => setShowContext(true), title: "Context settings", "aria-label": "Context settings", children: _jsx(Settings2, { className: "w-4 h-4" }) }), _jsx("button", { className: "btn-icon", onClick: endSession, title: "Close session", "aria-label": "Close", children: _jsx(X, { className: "w-4 h-4" }) })] })] }), _jsxs("div", { ref: scrollRef, className: "flex-1 overflow-auto px-6 py-4 space-y-4", children: [messages.length === 0 && (_jsx("p", { className: "text-spark-muted text-sm text-center py-8", children: "Send a message to start the conversation." })), messages.map((m, i) => (_jsx(MessageBubble, { message: m }, i))), streaming && (_jsxs("div", { className: "flex items-center gap-2 text-spark-muted text-xs", children: [_jsxs("span", { className: "inline-flex gap-0.5", children: [_jsx("span", { className: "w-1 h-1 rounded-full bg-spark-accent animate-pulse" }), _jsx("span", { className: "w-1 h-1 rounded-full bg-spark-accent animate-pulse [animation-delay:200ms]" }), _jsx("span", { className: "w-1 h-1 rounded-full bg-spark-accent animate-pulse [animation-delay:400ms]" })] }), "streaming\u2026"] }))] }), _jsx("div", { className: "border-t border-spark-border p-3 shrink-0", children: _jsxs("div", { className: "flex gap-2 items-end", children: [_jsx("textarea", { ref: inputRef, className: "input flex-1 resize-none", rows: 1, value: input, onChange: (e) => setInput(e.target.value), onKeyDown: handleKeyDown, placeholder: "Send a message\u2026   \u00B7   Enter to send, Shift+Enter for newline", disabled: streaming, style: { maxHeight: "200px" } }), streaming ? (_jsx("button", { className: "btn btn-danger", onClick: stopStreaming, title: "Stop", children: _jsx(Square, { className: "w-4 h-4", fill: "currentColor" }) })) : (_jsx("button", { className: "btn btn-primary", onClick: send, disabled: !input.trim(), title: "Send", children: _jsx(Send, { className: "w-4 h-4" }) }))] }) })] })) }), _jsx(Modal, { open: showContext, onClose: () => setShowContext(false), children: _jsxs("div", { className: "bg-spark-panel border border-spark-border rounded-lg w-full max-w-md p-6 space-y-4 shadow-2xl", children: [_jsxs("div", { className: "flex items-center justify-between", children: [_jsxs("h3", { className: "font-semibold flex items-center gap-2", children: [_jsx(Settings2, { className: "w-4 h-4 text-spark-accent" }), " Context settings"] }), _jsx("button", { className: "btn-icon", onClick: () => setShowContext(false), "aria-label": "Close", children: _jsx(X, { className: "w-4 h-4" }) })] }), _jsx("p", { className: "text-xs text-spark-muted", children: "These settings are stored locally per session and applied on the next turn you send." }), _jsxs("div", { children: [_jsxs("label", { className: "text-xs uppercase text-spark-muted block mb-1", children: ["Chat history (", contextConfig.max_history_messages, " messages)"] }), _jsx("input", { type: "range", min: 0, max: 100, step: 1, value: contextConfig.max_history_messages, onChange: (e) => updateContext({
+                                : "hover:bg-spark-border/30"}`, children: renamingId === s.session_id ? (_jsx("div", { className: "px-3 py-2", children: _jsx("input", { className: "input w-full text-sm", autoFocus: true, defaultValue: s.title ?? "", placeholder: "Chat name\u2026", onKeyDown: (e) => {
+                                        if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            commitRename(s, e.currentTarget.value);
+                                        }
+                                        else if (e.key === "Escape") {
+                                            e.preventDefault();
+                                            renamingRef.current = null;
+                                            setRenamingId(null);
+                                        }
+                                    }, onBlur: (e) => commitRename(s, e.currentTarget.value) }) })) : (_jsxs(_Fragment, { children: [_jsxs("button", { className: "w-full text-left pl-3 pr-20 py-2 transition", onClick: () => resumeSession(s), children: [_jsxs("div", { className: "flex items-center gap-1.5", children: [s.pinned && (_jsx(Pin, { className: "w-3 h-3 text-spark-accent fill-spark-accent shrink-0" })), _jsx("div", { className: "text-sm truncate text-spark-text", children: s.title ?? (_jsx("span", { className: "font-mono text-xs", children: s.session_id })) })] }), _jsxs("div", { className: "flex items-center gap-2 mt-0.5 text-[10px] text-spark-muted", children: [_jsx("span", { className: "truncate", children: s.agent_name }), s.title && (_jsx("span", { className: "font-mono truncate", children: s.session_id })), _jsx("span", { className: "shrink-0 ml-auto", children: _jsx(RelativeTime, { ts: s.updated_at }) })] })] }), _jsxs("div", { className: "absolute right-1 top-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition", children: [_jsx("button", { className: "btn-icon", title: s.pinned ? "Unpin" : "Pin", "aria-label": s.pinned ? "Unpin chat" : "Pin chat", onClick: (e) => {
+                                                    e.stopPropagation();
+                                                    togglePin(s);
+                                                }, children: s.pinned ? (_jsx(PinOff, { className: "w-3.5 h-3.5" })) : (_jsx(Pin, { className: "w-3.5 h-3.5" })) }), _jsx("button", { className: "btn-icon", title: "Rename", "aria-label": "Rename chat", onClick: (e) => {
+                                                    e.stopPropagation();
+                                                    renamingRef.current = s.session_id;
+                                                    setRenamingId(s.session_id);
+                                                }, children: _jsx(Pencil, { className: "w-3.5 h-3.5" }) }), _jsx("button", { className: "btn-icon text-spark-muted hover:text-spark-danger", title: "Delete", "aria-label": "Delete chat", onClick: (e) => {
+                                                    e.stopPropagation();
+                                                    deleteSession(s);
+                                                }, children: _jsx(Trash2, { className: "w-3.5 h-3.5" }) })] })] })) }, s.session_id)))) })] }), _jsx("div", { className: "flex-1 flex flex-col min-w-0", children: !sessionId ? (_jsx("div", { className: "flex-1 flex items-center justify-center", children: _jsx(EmptyState, { icon: _jsx(MessageSquare, { className: "w-10 h-10" }), title: "Start a conversation", description: "Pick an agent in the sidebar and start a new session to chat." }) })) : (_jsxs("div", { className: "panel flex-1 flex flex-col shadow-sm overflow-hidden", children: [_jsxs("div", { className: "border-b border-spark-border px-4 py-2 flex items-center justify-between text-sm shrink-0", children: [_jsxs("div", { className: "flex items-center gap-2 min-w-0", children: [_jsx(MessageSquare, { className: "w-4 h-4 text-spark-accent shrink-0" }), activeSession?.title ? (_jsxs(_Fragment, { children: [_jsx("span", { className: "font-medium text-sm truncate", children: activeSession.title }), _jsx("span", { className: "font-mono text-xs text-spark-muted truncate shrink-0", children: sessionId })] })) : (_jsx("span", { className: "font-mono text-xs truncate", children: sessionId })), _jsx("span", { className: "chip text-[10px] shrink-0", children: agentName }), activeSession && (_jsxs("span", { className: "text-xs text-spark-muted shrink-0", children: ["\u2022 started ", _jsx(RelativeTime, { ts: activeSession.created_at })] }))] }), _jsxs("div", { className: "flex items-center gap-2 shrink-0", children: [_jsx("span", { className: `chip ${connected ? "chip-good" : "chip-danger"} text-[10px]`, children: connected ? "connected" : "disconnected" }), _jsx("button", { className: "btn-icon", onClick: () => setShowContext(true), title: "Context settings", "aria-label": "Context settings", children: _jsx(Settings2, { className: "w-4 h-4" }) }), _jsx("button", { className: "btn-icon", onClick: endSession, title: "Close session", "aria-label": "Close", children: _jsx(X, { className: "w-4 h-4" }) })] })] }), _jsxs("div", { ref: scrollRef, className: "flex-1 overflow-auto px-6 py-4 space-y-4", children: [messages.length === 0 && (_jsx("p", { className: "text-spark-muted text-sm text-center py-8", children: "Send a message to start the conversation." })), messages.map((m, i) => (_jsx(MessageBubble, { message: m }, i))), streaming && (_jsxs("div", { className: "flex items-center gap-2 text-spark-muted text-xs", children: [_jsxs("span", { className: "inline-flex gap-0.5", children: [_jsx("span", { className: "w-1 h-1 rounded-full bg-spark-accent animate-pulse" }), _jsx("span", { className: "w-1 h-1 rounded-full bg-spark-accent animate-pulse [animation-delay:200ms]" }), _jsx("span", { className: "w-1 h-1 rounded-full bg-spark-accent animate-pulse [animation-delay:400ms]" })] }), "streaming\u2026"] }))] }), _jsx("div", { className: "border-t border-spark-border p-3 shrink-0", children: _jsxs("div", { className: "flex gap-2 items-end", children: [_jsx("textarea", { ref: inputRef, className: "input flex-1 resize-none", rows: 1, value: input, onChange: (e) => setInput(e.target.value), onKeyDown: handleKeyDown, placeholder: "Send a message\u2026   \u00B7   Enter to send, Shift+Enter for newline", disabled: streaming, style: { maxHeight: "200px" } }), streaming ? (_jsx("button", { className: "btn btn-danger", onClick: stopStreaming, title: "Stop", children: _jsx(Square, { className: "w-4 h-4", fill: "currentColor" }) })) : (_jsx("button", { className: "btn btn-primary", onClick: send, disabled: !input.trim(), title: "Send", children: _jsx(Send, { className: "w-4 h-4" }) }))] }) })] })) }), _jsx(Modal, { open: showContext, onClose: () => setShowContext(false), children: _jsxs("div", { className: "bg-spark-panel border border-spark-border rounded-lg w-full max-w-md p-6 space-y-4 shadow-2xl", children: [_jsxs("div", { className: "flex items-center justify-between", children: [_jsxs("h3", { className: "font-semibold flex items-center gap-2", children: [_jsx(Settings2, { className: "w-4 h-4 text-spark-accent" }), " Context settings"] }), _jsx("button", { className: "btn-icon", onClick: () => setShowContext(false), "aria-label": "Close", children: _jsx(X, { className: "w-4 h-4" }) })] }), _jsx("p", { className: "text-xs text-spark-muted", children: "These settings are stored locally per session and applied on the next turn you send." }), _jsxs("div", { children: [_jsxs("label", { className: "text-xs uppercase text-spark-muted block mb-1", children: ["Chat history (", contextConfig.max_history_messages, " messages)"] }), _jsx("input", { type: "range", min: 0, max: 100, step: 1, value: contextConfig.max_history_messages, onChange: (e) => updateContext({
                                         max_history_messages: parseInt(e.target.value, 10),
                                     }), className: "w-full" }), _jsx("p", { className: "text-xs text-spark-muted mt-1", children: "Past user/assistant turns included in the prompt. Lower = less cost, less context." })] }), _jsxs("div", { className: "border-t border-spark-border pt-3", children: [_jsxs("label", { className: "flex items-center gap-2 text-sm cursor-pointer", children: [_jsx("input", { type: "checkbox", checked: contextConfig.include_long_term_memory, onChange: (e) => updateContext({ include_long_term_memory: e.target.checked }) }), "Include long-term memory"] }), _jsx("p", { className: "text-xs text-spark-muted mt-1 ml-6", children: "Retrieve semantically-similar memories from the agent's vector store and add them to the system prompt." })] }), contextConfig.include_long_term_memory && (_jsxs(_Fragment, { children: [_jsxs("div", { children: [_jsxs("label", { className: "text-xs uppercase text-spark-muted block mb-1", children: ["Memory top-K (", contextConfig.ltm_top_k, ")"] }), _jsx("input", { type: "range", min: 0, max: 20, step: 1, value: contextConfig.ltm_top_k, onChange: (e) => updateContext({ ltm_top_k: parseInt(e.target.value, 10) }), className: "w-full" })] }), _jsxs("div", { children: [_jsxs("label", { className: "text-xs uppercase text-spark-muted block mb-1", children: ["Min similarity (", contextConfig.ltm_min_score.toFixed(2), ")"] }), _jsx("input", { type: "range", min: 0, max: 1, step: 0.01, value: contextConfig.ltm_min_score, onChange: (e) => updateContext({
                                                 ltm_min_score: parseFloat(e.target.value),
                                             }), className: "w-full" })] }), _jsxs("div", { children: [_jsxs("label", { className: "flex items-center gap-2 text-sm cursor-pointer", children: [_jsx("input", { type: "checkbox", checked: contextConfig.include_global, onChange: (e) => updateContext({ include_global: e.target.checked }) }), "Include global / shared memories"] }), _jsxs("p", { className: "text-xs text-spark-muted mt-1 ml-6", children: ["Agents can opt in to share long-term memories with each other via the global pool. Requires the agent's", _jsx("code", { className: "font-mono ml-1", children: "memory.sharing.read_global" }), "config."] })] })] })), _jsxs("div", { className: "flex justify-between gap-2 pt-2 border-t border-spark-border", children: [_jsx("button", { className: "btn", onClick: () => {
                                         setContextConfig(DEFAULT_CONTEXT);
                                         saveContext(sessionId, DEFAULT_CONTEXT);
-                                    }, children: "Reset to defaults" }), _jsx("button", { className: "btn btn-primary", onClick: () => setShowContext(false), children: "Done" })] })] }) }), _jsx(ConfirmDialog, { open: !!showDeleteConfirm, title: "Delete session?", description: "Removes the session and all its messages.", tone: "danger", confirmLabel: "Delete", onCancel: () => setShowDeleteConfirm(null), onConfirm: () => {
-                    // For now we just hide locally — no backend delete route exists yet.
-                    toast.info("Session hidden from list");
-                    setShowDeleteConfirm(null);
-                } })] }));
+                                    }, children: "Reset to defaults" }), _jsx("button", { className: "btn btn-primary", onClick: () => setShowContext(false), children: "Done" })] })] }) })] }));
 }
 function MessageBubble({ message: m }) {
     const [copied, setCopied] = useState(false);

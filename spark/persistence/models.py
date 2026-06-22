@@ -118,6 +118,9 @@ class SessionRow(SQLModel, table=True):
     # set — long conversations that drift off the original topic keep
     # their first-turn title for stable navigation.
     title: str | None = Field(default=None, max_length=160)
+    # Operator-pinned chats sort to the top of the sidebar and survive
+    # the 200-row list cap. Additive column (see ``_apply_additive_migrations``).
+    pinned: bool = Field(default=False, index=True)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
